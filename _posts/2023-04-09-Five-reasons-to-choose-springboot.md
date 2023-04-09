@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "5 Reasons Why Spring Boot is the Best Framework for Java Web Development"
+title: "Five-reasons-to-choose-springboot"
 date:  2023-04-09 16:44:00 +0530
 categories: Springboot
 ---
