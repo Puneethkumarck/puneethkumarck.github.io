@@ -1,0 +1,48 @@
+---
+interface Props {
+  type?: 'note' | 'warning' | 'insight' | 'terminal';
+}
+
+const { type = 'note' } = Astro.props;
+
+const styles: Record<string, { border: string; bg: string; icon: string; label: string }> = {
+  note: {
+    border: 'var(--color-accent)',
+    bg: 'var(--color-accent-glow)',
+    icon: '→',
+    label: 'Note',
+  },
+  warning: {
+    border: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.1)',
+    icon: '⚠',
+    label: 'Warning',
+  },
+  insight: {
+    border: 'var(--color-success)',
+    bg: 'rgba(16, 185, 129, 0.1)',
+    icon: '✦',
+    label: 'Key Insight',
+  },
+  terminal: {
+    border: 'var(--color-accent)',
+    bg: 'var(--color-bg-tertiary)',
+    icon: '$',
+    label: 'Terminal',
+  },
+};
+
+const s = styles[type];
+---
+
+<aside
+  class="my-6 rounded-lg border-l-4 px-5 py-4"
+  style={`border-color: ${s.border}; background-color: ${s.bg};`}
+>
+  <p class="mb-1 text-xs font-bold uppercase tracking-wider" style={`color: ${s.border};`}>
+    <span class="mr-1.5" style="font-family: var(--font-mono);">{s.icon}</span>{s.label}
+  </p>
+  <div class="text-sm leading-relaxed" style="color: var(--color-text-secondary);">
+    <slot />
+  </div>
+</aside>

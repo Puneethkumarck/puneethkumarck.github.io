@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Not Found">
+  <div class="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+    <h1
+      class="text-6xl font-bold"
+      style="background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
+    >
+      404
+    </h1>
+    <p class="mt-4 text-lg" style="color: var(--color-text-secondary);">
+      This page doesn't exist.
+    </p>
+    <a
+      href="/"
+      class="mt-6 inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-white"
+      style="background-color: var(--color-accent);"
+    >
+      &larr; Back Home
+    </a>
+  </div>
+</BaseLayout>

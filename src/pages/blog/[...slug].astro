@@ -1,0 +1,55 @@
+---
+import BlogLayout from '../../layouts/BlogLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+
+  return posts.map((post) => {
+    // Build series navigation data
+    let seriesData = undefined;
+
+    if (post.data.series && post.data.seriesOrder) {
+      const seriesPosts = posts
+        .filter((p) => p.data.series === post.data.series)
+        .sort((a, b) => (a.data.seriesOrder || 0) - (b.data.seriesOrder || 0));
+
+      const currentIndex = seriesPosts.findIndex((p) => p.id === post.id);
+      const prev = currentIndex > 0 ? seriesPosts[currentIndex - 1] : undefined;
+      const next = currentIndex < seriesPosts.length - 1 ? seriesPosts[currentIndex + 1] : undefined;
+
+      seriesData = {
+        name: post.data.series,
+        total: seriesPosts.length,
+        prev: prev ? { slug: prev.id, title: prev.data.title } : undefined,
+        next: next ? { slug: next.id, title: next.data.title } : undefined,
+      };
+    }
+
+    return {
+      params: { slug: post.id },
+      props: { post, seriesData },
+    };
+  });
+}
+
+const { post, seriesData } = Astro.props;
+const { Content, headings } = await render(post);
+---
+
+<BlogLayout
+  title={post.data.title}
+  description={post.data.description}
+  date={post.data.date}
+  updated={post.data.updated}
+  category={post.data.category}
+  tags={post.data.tags}
+  body={post.body || ''}
+  series={post.data.series}
+  seriesOrder={post.data.seriesOrder}
+  canonical={post.data.canonical}
+  seriesData={seriesData}
+  headings={headings}
+>
+  <Content />
+</BlogLayout>

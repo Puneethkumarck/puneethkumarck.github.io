@@ -1,0 +1,105 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  tags: string[];
+  github?: string;
+  live?: string;
+  stats?: {
+    services?: number;
+    tests?: number;
+    integrations?: number;
+  };
+}
+
+const { title, description, tags, github, live, stats } = Astro.props;
+---
+
+<BaseLayout title={title} description={description}>
+  <article class="mx-auto max-w-4xl px-6 py-16">
+    <a
+      href="/projects"
+      class="mb-8 inline-flex items-center gap-1 text-sm transition-colors"
+      style="color: var(--color-text-muted);"
+    >
+      &larr; Back to Projects
+    </a>
+
+    <header class="mb-10">
+      <h1
+        class="text-3xl font-bold tracking-tight sm:text-4xl"
+        style="color: var(--color-text-primary);"
+      >
+        {title}
+      </h1>
+      <p class="mt-3 text-lg" style="color: var(--color-text-secondary);">
+        {description}
+      </p>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        {github && (
+          <a
+            href={github}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
+            style="border-color: var(--color-border); color: var(--color-text-secondary);"
+          >
+            GitHub &nearr;
+          </a>
+        )}
+        {live && (
+          <a
+            href={live}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
+            style="background-color: var(--color-accent);"
+          >
+            Live Demo &nearr;
+          </a>
+        )}
+      </div>
+    </header>
+
+    {stats && (
+      <div class="mb-10 flex gap-8 border-y py-6" style="border-color: var(--color-border);">
+        {stats.services && (
+          <div>
+            <div class="text-2xl font-bold" style="color: var(--color-accent);">{stats.services}</div>
+            <div class="text-sm" style="color: var(--color-text-muted);">Services</div>
+          </div>
+        )}
+        {stats.tests && (
+          <div>
+            <div class="text-2xl font-bold" style="color: var(--color-accent);">{stats.tests}</div>
+            <div class="text-sm" style="color: var(--color-text-muted);">Tests</div>
+          </div>
+        )}
+        {stats.integrations && (
+          <div>
+            <div class="text-2xl font-bold" style="color: var(--color-accent);">{stats.integrations}</div>
+            <div class="text-sm" style="color: var(--color-text-muted);">Integrations</div>
+          </div>
+        )}
+      </div>
+    )}
+
+    <div class="mb-10 flex flex-wrap gap-2">
+      {tags.map((tag) => (
+        <span
+          class="rounded-full px-3 py-1 text-sm font-medium"
+          style="background-color: var(--color-bg-tertiary); color: var(--color-text-secondary); border: 1px solid var(--color-border);"
+        >
+          {tag}
+        </span>
+      ))}
+    </div>
+
+    <div class="prose prose-lg max-w-none" style="--tw-prose-body: var(--color-text-secondary); --tw-prose-headings: var(--color-text-primary);">
+      <slot />
+    </div>
+  </article>
+</BaseLayout>

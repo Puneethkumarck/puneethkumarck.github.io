@@ -1,0 +1,41 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import SkillGrid from '../components/SkillGrid.astro';
+import { skillCategories } from '../data/skills';
+---
+
+<PageLayout title="About" description="Backend engineer building fintech infrastructure at scale.">
+  <div class="space-y-16">
+    <!-- Bio -->
+    <section>
+      <div class="max-w-2xl space-y-4 text-base leading-relaxed" style="color: var(--color-text-secondary);">
+        <p>
+          I'm a lead backend engineer based in <strong style="color: var(--color-text-primary);">Paris, France</strong>.
+        </p>
+        <p>
+          I've spent my career building mission-critical payment infrastructure
+          across banking (US, UK), fintech (Europe), ecommerce (US), and food tech (Europe).
+        </p>
+        <p>
+          Currently focused on two things: <strong style="color: var(--color-text-primary);">stablecoin-powered
+          cross-border B2B payments</strong> (MPC wallets, multichain indexers, transaction
+          recovery engines) and <strong style="color: var(--color-text-primary);">AI agents</strong> that
+          solve real engineering problems.
+        </p>
+        <p>
+          I write about what I learn along the way.
+        </p>
+      </div>
+    </section>
+
+    <!-- Skills -->
+    <section>
+      <h2 class="mb-8 text-sm font-semibold uppercase tracking-wider" style="color: var(--color-text-muted);">
+        Skills & Technologies
+      </h2>
+      <SkillGrid categories={skillCategories} />
+    </section>
+
+
+  </div>
+</PageLayout>

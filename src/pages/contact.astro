@@ -1,0 +1,47 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+import { SOCIAL_LINKS } from '../data/site';
+---
+
+<PageLayout title="Contact" subtitle="Let's connect.">
+  <div class="max-w-lg space-y-8">
+    <p style="color: var(--color-text-secondary);">
+      Have a question, collaboration idea, or just want to chat about payments and stablecoins?
+      Reach out through any channel below.
+    </p>
+
+    <div class="space-y-4">
+      {
+        SOCIAL_LINKS.map((link) => (
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-3 rounded-xl border p-4 transition-all"
+            style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+          >
+            <span class="font-medium" style="color: var(--color-text-primary);">
+              {link.name}
+            </span>
+            <span class="text-sm" style="color: var(--color-text-muted);">
+              &nearr;
+            </span>
+          </a>
+        ))
+      }
+
+      <a
+        href="mailto:hello@puneethkumarck.dev"
+        class="flex items-center gap-3 rounded-xl border p-4 transition-all"
+        style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+      >
+        <span class="font-medium" style="color: var(--color-text-primary);">
+          Email
+        </span>
+        <span class="text-sm" style="color: var(--color-text-muted);">
+          hello@puneethkumarck.dev
+        </span>
+      </a>
+    </div>
+  </div>
+</PageLayout>

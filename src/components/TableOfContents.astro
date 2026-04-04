@@ -1,0 +1,65 @@
+---
+interface Props {
+  headings: { depth: number; slug: string; text: string }[];
+}
+
+const { headings } = Astro.props;
+const toc = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+{toc.length > 0 && (
+  <nav class="hidden xl:block">
+    <div class="sticky top-24">
+      <p
+        class="mb-3 text-xs font-bold uppercase tracking-wider"
+        style="color: var(--color-text-muted); font-family: var(--font-mono);"
+      >
+        On this page
+      </p>
+      <ul class="space-y-1.5 border-l" style="border-color: var(--color-border);">
+        {toc.map((heading) => (
+          <li style={heading.depth === 3 ? 'padding-left: 1rem;' : ''}>
+            <a
+              href={`#${heading.slug}`}
+              class="toc-link -ml-px block border-l py-1 pl-4 text-sm transition-colors"
+              style="border-color: transparent; color: var(--color-text-muted);"
+              data-slug={heading.slug}
+            >
+              {heading.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </nav>
+)}
+
+<script>
+  function initTOC() {
+    const links = document.querySelectorAll('.toc-link');
+    if (links.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            links.forEach((link) => {
+              const el = link as HTMLElement;
+              const isActive = el.dataset.slug === entry.target.id;
+              el.style.borderColor = isActive ? 'var(--color-accent)' : 'transparent';
+              el.style.color = isActive ? 'var(--color-accent)' : 'var(--color-text-muted)';
+            });
+          }
+        });
+      },
+      { rootMargin: '-80px 0px -70% 0px' }
+    );
+
+    document.querySelectorAll('h2[id], h3[id]').forEach((heading) => {
+      observer.observe(heading);
+    });
+  }
+
+  initTOC();
+  document.addEventListener('astro:after-swap', initTOC);
+</script>

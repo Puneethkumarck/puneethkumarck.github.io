@@ -1,0 +1,66 @@
+---
+import { SOCIAL_LINKS } from '../data/site';
+---
+
+<section class="py-16 sm:py-24">
+  <div class="mx-auto max-w-4xl px-6">
+    <p class="mb-4 text-sm font-medium" style="color: var(--color-accent);">
+      Hi, I'm
+    </p>
+    <h1 class="mb-4 text-4xl font-bold tracking-tight sm:text-5xl">
+      <span
+        style="background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
+      >
+        Puneethkumar CK.
+      </span>
+    </h1>
+    <p
+      class="mb-6 max-w-xl text-lg leading-relaxed sm:text-xl"
+      style="color: var(--color-text-secondary);"
+    >
+      Backend engineer building blockchain payment infrastructure
+      and AI agents.
+    </p>
+    <p class="mb-8 max-w-lg leading-relaxed" style="color: var(--color-text-muted);">
+      Previously: banking (US, UK), fintech (Europe), ecommerce (US), food tech (Europe).
+      Currently: stablecoin cross-border payments and AI agents.
+    </p>
+
+    <div class="flex flex-wrap items-center gap-4">
+      <a
+        href="/projects"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-white transition-all"
+        style="background-color: var(--color-accent);"
+      >
+        View Projects
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+        </svg>
+      </a>
+      <a
+        href="/blog"
+        class="inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-medium transition-all"
+        style="border-color: var(--color-border); color: var(--color-text-secondary);"
+      >
+        Read Blog
+      </a>
+    </div>
+
+    <div class="mt-10 flex items-center gap-5">
+      {
+        SOCIAL_LINKS.map((link) => (
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="transition-colors"
+            style="color: var(--color-text-muted);"
+            aria-label={link.name}
+          >
+            <span class="text-sm font-medium">{link.name}</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>

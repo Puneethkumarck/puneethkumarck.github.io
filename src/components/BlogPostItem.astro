@@ -1,0 +1,68 @@
+---
+import { formatDate } from '../utils/date-format';
+import { getReadingTime } from '../utils/reading-time';
+
+interface Props {
+  title: string;
+  description: string;
+  date: Date;
+  category: string;
+  slug: string;
+  body: string;
+  series?: string;
+  seriesOrder?: number;
+}
+
+const { title, date, category, slug, body, series, seriesOrder } = Astro.props;
+const readingTime = getReadingTime(body);
+
+const categoryLabels: Record<string, string> = {
+  'stablecoin-payments': 'Stablecoin Payments',
+  'system-design': 'System Design',
+  'payments-engineering': 'Payments Engineering',
+  'blockchain': 'Blockchain',
+  'distributed-systems': 'Distributed Systems',
+  'career': 'Career',
+  'mpc-cryptography': 'MPC Cryptography',
+  'java-engineering': 'Java Engineering',
+  'architecture-decisions': 'Architecture Decisions',
+};
+---
+
+<article class="group border-b py-5 transition-colors" style="border-color: var(--color-border);">
+  <a href={`/blog/${slug}`} class="block">
+    <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
+      <time
+        datetime={date.toISOString()}
+        class="shrink-0 text-sm tabular-nums"
+        style="color: var(--color-text-muted);"
+      >
+        {formatDate(date)}
+      </time>
+      <div class="min-w-0 flex-1">
+        <h3
+          class="font-medium transition-colors group-hover:underline group-hover:underline-offset-4"
+          style="color: var(--color-text-primary);"
+        >
+          {series && seriesOrder && (
+            <span class="mr-1.5 text-sm font-normal" style="color: var(--color-accent);">
+              #{seriesOrder}
+            </span>
+          )}
+          {title}
+        </h3>
+        <div class="mt-1 flex items-center gap-2">
+          <span
+            class="rounded-full px-2 py-0.5 text-xs font-medium"
+            style="background-color: var(--color-bg-tertiary); color: var(--color-text-muted);"
+          >
+            {categoryLabels[category] || category}
+          </span>
+          <span class="text-xs" style="color: var(--color-text-muted);">
+            {readingTime} min read
+          </span>
+        </div>
+      </div>
+    </div>
+  </a>
+</article>

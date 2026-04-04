@@ -1,0 +1,98 @@
+---
+import { NAV_LINKS } from '../data/site';
+import ThemeToggle from './ThemeToggle.astro';
+
+const currentPath = Astro.url.pathname;
+---
+
+<header
+  class="sticky top-0 z-50 border-b backdrop-blur-md"
+  style="background-color: color-mix(in srgb, var(--color-bg-primary) 80%, transparent); border-color: var(--color-border);"
+>
+  <nav class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+    <a
+      href="/"
+      class="text-lg font-bold tracking-tight transition-colors hover:opacity-80"
+      style="background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;"
+    >
+      PK
+    </a>
+
+    <!-- Desktop nav -->
+    <div class="hidden items-center gap-6 sm:flex">
+      {
+        NAV_LINKS.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              'text-sm font-medium transition-colors',
+              currentPath === link.href || (link.href !== '/' && currentPath.startsWith(link.href))
+                ? 'underline underline-offset-4'
+                : 'hover:underline hover:underline-offset-4',
+            ]}
+            style={
+              currentPath === link.href || (link.href !== '/' && currentPath.startsWith(link.href))
+                ? 'color: var(--color-accent);'
+                : 'color: var(--color-text-secondary);'
+            }
+          >
+            {link.label}
+          </a>
+        ))
+      }
+      <ThemeToggle />
+    </div>
+
+    <!-- Mobile menu button -->
+    <div class="flex items-center gap-3 sm:hidden">
+      <ThemeToggle />
+      <button
+        id="menu-toggle"
+        class="p-1 transition-colors"
+        style="color: var(--color-text-secondary);"
+        aria-label="Toggle menu"
+        aria-expanded="false"
+      >
+        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path id="menu-icon" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile nav -->
+  <div
+    id="mobile-menu"
+    class="hidden border-t sm:hidden"
+    style="border-color: var(--color-border);"
+  >
+    <div class="flex flex-col gap-1 px-6 py-4">
+      {
+        NAV_LINKS.map((link) => (
+          <a
+            href={link.href}
+            class="rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+            style={
+              currentPath === link.href || (link.href !== '/' && currentPath.startsWith(link.href))
+                ? `color: var(--color-accent); background-color: var(--color-accent-glow);`
+                : `color: var(--color-text-secondary);`
+            }
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</header>
+
+<script>
+  const toggle = document.getElementById('menu-toggle');
+  const menu = document.getElementById('mobile-menu');
+
+  toggle?.addEventListener('click', () => {
+    const isOpen = !menu?.classList.contains('hidden');
+    menu?.classList.toggle('hidden');
+    toggle.setAttribute('aria-expanded', String(!isOpen));
+  });
+</script>

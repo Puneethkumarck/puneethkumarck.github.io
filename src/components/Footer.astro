@@ -1,0 +1,34 @@
+---
+import { SOCIAL_LINKS } from '../data/site';
+---
+
+<footer class="border-t" style="border-color: var(--color-border);">
+  <div class="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+    <div class="flex items-center gap-6">
+      {
+        SOCIAL_LINKS.map((link) => (
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-sm font-medium transition-colors"
+            style="color: var(--color-text-muted);"
+            aria-label={link.name}
+          >
+            {link.name}
+          </a>
+        ))
+      }
+      <a
+        href="/rss.xml"
+        class="text-sm font-medium transition-colors"
+        style="color: var(--color-text-muted);"
+      >
+        RSS
+      </a>
+    </div>
+    <p class="text-sm" style="color: var(--color-text-muted);">
+      &copy; {new Date().getFullYear()} Puneethkumar CK
+    </p>
+  </div>
+</footer>

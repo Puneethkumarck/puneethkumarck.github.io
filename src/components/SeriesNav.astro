@@ -1,0 +1,53 @@
+---
+interface Props {
+  seriesName: string;
+  currentOrder: number;
+  totalPosts: number;
+  prevPost?: { slug: string; title: string };
+  nextPost?: { slug: string; title: string };
+}
+
+const { seriesName, currentOrder, totalPosts, prevPost, nextPost } = Astro.props;
+---
+
+<nav
+  class="mt-10 rounded-xl border p-6"
+  style="border-color: var(--color-border); background-color: var(--color-bg-secondary);"
+>
+  <p class="mb-4 text-center text-sm font-medium" style="color: var(--color-text-muted);">
+    Part {currentOrder} of {totalPosts} in
+    <span style="color: var(--color-accent);">{seriesName}</span>
+  </p>
+  <div class="flex items-center justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      {prevPost ? (
+        <a
+          href={`/blog/${prevPost.slug}`}
+          class="block text-sm transition-colors"
+          style="color: var(--color-text-secondary);"
+        >
+          <span class="text-xs" style="color: var(--color-text-muted);">&larr; Previous</span>
+          <br />
+          <span class="font-medium">{prevPost.title}</span>
+        </a>
+      ) : (
+        <span class="text-sm" style="color: var(--color-text-muted);">Start of series</span>
+      )}
+    </div>
+    <div class="min-w-0 flex-1 text-right">
+      {nextPost ? (
+        <a
+          href={`/blog/${nextPost.slug}`}
+          class="block text-sm transition-colors"
+          style="color: var(--color-text-secondary);"
+        >
+          <span class="text-xs" style="color: var(--color-text-muted);">Next &rarr;</span>
+          <br />
+          <span class="font-medium">{nextPost.title}</span>
+        </a>
+      ) : (
+        <span class="text-sm" style="color: var(--color-text-muted);">Latest post</span>
+      )}
+    </div>
+  </div>
+</nav>

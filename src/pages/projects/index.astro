@@ -1,0 +1,26 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import ProjectCard from '../../components/ProjectCard.astro';
+import { getCollection } from 'astro:content';
+
+const allProjects = await getCollection('projects');
+const sortedProjects = allProjects.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+---
+
+<PageLayout title="Projects" subtitle="Things I've built and contributed to.">
+  <div class="grid gap-6 sm:grid-cols-2">
+    {
+      sortedProjects.map((project) => (
+        <ProjectCard
+          title={project.data.title}
+          description={project.data.description}
+          tags={project.data.tags}
+          slug={project.id}
+          github={project.data.github}
+          featured={project.data.featured}
+          stats={project.data.stats}
+        />
+      ))
+    }
+  </div>
+</PageLayout>

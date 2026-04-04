@@ -1,0 +1,96 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  tags: string[];
+  slug: string;
+  github?: string;
+  featured?: boolean;
+  stats?: {
+    services?: number;
+    tests?: number;
+    integrations?: number;
+  };
+}
+
+const { title, description, tags, slug, github, featured, stats } = Astro.props;
+---
+
+<article
+  class="group rounded-xl border p-6 transition-all duration-200"
+  style={`border-color: var(--color-border); background-color: var(--color-bg-secondary);`}
+>
+  {featured && (
+    <span
+      class="mb-3 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style="background-color: var(--color-accent-glow); color: var(--color-accent);"
+    >
+      Featured
+    </span>
+  )}
+
+  <h3 class="mb-2 text-lg font-semibold" style="color: var(--color-text-primary);">
+    <a href={`/projects/${slug}`} class="transition-colors hover:underline hover:underline-offset-4" style="color: inherit;">
+      {title}
+    </a>
+  </h3>
+
+  <p class="mb-4 text-sm leading-relaxed" style="color: var(--color-text-secondary);">
+    {description}
+  </p>
+
+  {stats && (
+    <div class="mb-4 flex gap-4">
+      {stats.services && (
+        <div class="text-center">
+          <div class="text-lg font-bold" style="color: var(--color-accent);">{stats.services}</div>
+          <div class="text-xs" style="color: var(--color-text-muted);">Services</div>
+        </div>
+      )}
+      {stats.tests && (
+        <div class="text-center">
+          <div class="text-lg font-bold" style="color: var(--color-accent);">{stats.tests}</div>
+          <div class="text-xs" style="color: var(--color-text-muted);">Tests</div>
+        </div>
+      )}
+      {stats.integrations && (
+        <div class="text-center">
+          <div class="text-lg font-bold" style="color: var(--color-accent);">{stats.integrations}</div>
+          <div class="text-xs" style="color: var(--color-text-muted);">Integrations</div>
+        </div>
+      )}
+    </div>
+  )}
+
+  <div class="mb-4 flex flex-wrap gap-2">
+    {tags.map((tag) => (
+      <span
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium"
+        style="background-color: var(--color-bg-tertiary); color: var(--color-text-muted); border: 1px solid var(--color-border);"
+      >
+        {tag}
+      </span>
+    ))}
+  </div>
+
+  <div class="flex items-center gap-4">
+    <a
+      href={`/projects/${slug}`}
+      class="text-sm font-medium transition-colors"
+      style="color: var(--color-accent);"
+    >
+      Details &rarr;
+    </a>
+    {github && (
+      <a
+        href={github}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm font-medium transition-colors"
+        style="color: var(--color-text-muted);"
+      >
+        GitHub &nearr;
+      </a>
+    )}
+  </div>
+</article>

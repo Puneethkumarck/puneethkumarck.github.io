@@ -1,0 +1,80 @@
+---
+import PageLayout from '../layouts/PageLayout.astro';
+
+const tools = [
+  {
+    category: 'Editor & Terminal',
+    items: [
+      { name: 'IntelliJ IDEA Ultimate', desc: 'Primary IDE for Java/Kotlin development' },
+      { name: 'Claude Code', desc: 'AI pair programming in the terminal' },
+      { name: 'iTerm2 + Zsh', desc: 'Terminal with Oh My Zsh' },
+      { name: 'JetBrains Mono', desc: 'Editor and terminal font' },
+    ],
+  },
+  {
+    category: 'Dev Stack',
+    items: [
+      { name: 'Java 25 + Gradle 9', desc: 'Latest JDK with Kotlin DSL builds' },
+      { name: 'Spring Boot 4', desc: 'Application framework with Spring Cloud 2025' },
+      { name: 'PostgreSQL 16', desc: 'Primary database for all services' },
+      { name: 'Apache Kafka (Redpanda)', desc: 'Event streaming, Redpanda locally' },
+      { name: 'Redis 7', desc: 'Caching and rate limiting' },
+      { name: 'Temporal', desc: 'Durable workflow orchestration' },
+      { name: 'Docker Compose', desc: 'Local infrastructure stack' },
+    ],
+  },
+  {
+    category: 'Testing',
+    items: [
+      { name: 'JUnit 5 + AssertJ', desc: 'Testing framework with fluent assertions' },
+      { name: 'Mockito (BDDMockito)', desc: 'Interaction verification testing' },
+      { name: 'Testcontainers', desc: 'Integration tests with real databases' },
+      { name: 'WireMock', desc: 'HTTP API mocking for provider tests' },
+      { name: 'ArchUnit', desc: 'Architecture enforcement as tests' },
+    ],
+  },
+  {
+    category: 'Infrastructure',
+    items: [
+      { name: 'AWS (EKS, MSK, RDS)', desc: 'Production cloud infrastructure' },
+      { name: 'Kubernetes', desc: 'Container orchestration' },
+      { name: 'GitHub Actions', desc: 'CI/CD pipelines' },
+      { name: 'Terraform', desc: 'Infrastructure as code' },
+    ],
+  },
+  {
+    category: 'Productivity',
+    items: [
+      { name: 'Linear', desc: 'Project management and issue tracking' },
+      { name: 'Notion', desc: 'Notes and documentation' },
+      { name: 'Figma', desc: 'Occasional design work' },
+    ],
+  },
+];
+---
+
+<PageLayout title="Uses" subtitle="Tools, tech, and setup I use daily.">
+  <div class="space-y-12">
+    {
+      tools.map((section) => (
+        <section>
+          <h2 class="mb-6 text-sm font-semibold uppercase tracking-wider" style="color: var(--color-text-muted);">
+            {section.category}
+          </h2>
+          <div class="space-y-4">
+            {section.items.map((item) => (
+              <div class="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+                <span class="shrink-0 font-medium sm:w-56" style="color: var(--color-text-primary);">
+                  {item.name}
+                </span>
+                <span class="text-sm" style="color: var(--color-text-secondary);">
+                  {item.desc}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))
+    }
+  </div>
+</PageLayout>

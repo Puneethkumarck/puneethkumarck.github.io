@@ -1,0 +1,73 @@
+---
+import PageLayout from '../../layouts/PageLayout.astro';
+import BlogPostItem from '../../components/BlogPostItem.astro';
+import { getCollection } from 'astro:content';
+
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+const sortedPosts = allPosts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+// Group by year
+const postsByYear = sortedPosts.reduce<Record<string, typeof sortedPosts>>((acc, post) => {
+  const year = post.data.date.getFullYear().toString();
+  if (!acc[year]) acc[year] = [];
+  acc[year].push(post);
+  return acc;
+}, {});
+
+// Check for series
+const seriesPosts = sortedPosts.filter((p) => p.data.series);
+const seriesNames = [...new Set(seriesPosts.map((p) => p.data.series))];
+---
+
+<PageLayout
+  title="Blog"
+  subtitle="Engineering insights on payments, stablecoins & distributed systems."
+>
+  {/* Series banners */}
+  {seriesNames.length > 0 && (
+    <div class="mb-10 space-y-4">
+      {seriesNames.map((seriesName) => {
+        const posts = seriesPosts.filter((p) => p.data.series === seriesName);
+        const published = posts.length;
+        return (
+          <div
+            class="rounded-xl border p-5"
+            style="border-color: var(--color-accent); background-color: var(--color-accent-glow);"
+          >
+            <h3 class="font-semibold" style="color: var(--color-text-primary);">
+              {seriesName}
+            </h3>
+            <p class="mt-1 text-sm" style="color: var(--color-text-secondary);">
+              {published} posts published
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  )}
+
+  {/* Posts by year */}
+  {Object.entries(postsByYear)
+    .sort(([a], [b]) => Number(b) - Number(a))
+    .map(([year, posts]) => (
+      <section class="mb-10">
+        <h2 class="mb-4 text-lg font-semibold" style="color: var(--color-text-primary);">
+          {year}
+        </h2>
+        <div>
+          {posts.map((post) => (
+            <BlogPostItem
+              title={post.data.title}
+              description={post.data.description}
+              date={post.data.date}
+              category={post.data.category}
+              slug={post.id}
+              body={post.body || ''}
+              series={post.data.series}
+              seriesOrder={post.data.seriesOrder}
+            />
+          ))}
+        </div>
+      </section>
+    ))}
+</PageLayout>

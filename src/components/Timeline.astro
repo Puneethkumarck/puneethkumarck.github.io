@@ -1,0 +1,71 @@
+---
+import type { Experience } from '../data/experience';
+
+interface Props {
+  items: Experience[];
+  compact?: boolean;
+}
+
+const { items, compact = false } = Astro.props;
+---
+
+<div class="relative">
+  <!-- Vertical line -->
+  <div
+    class="absolute left-[7px] top-2 bottom-2 w-px"
+    style="background-color: var(--color-border);"
+  >
+  </div>
+
+  <div class="space-y-8">
+    {
+      items.map((item) => (
+        <div class="relative pl-8">
+          <!-- Dot -->
+          <div
+            class="absolute left-0 top-2 h-[15px] w-[15px] rounded-full border-2"
+            style="border-color: var(--color-accent); background-color: var(--color-bg-primary);"
+          />
+
+          <div>
+            <div class="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+              <h3 class="font-semibold" style="color: var(--color-text-primary);">
+                {item.company}
+              </h3>
+              <span class="text-sm" style="color: var(--color-text-muted);">
+                {item.period}
+              </span>
+            </div>
+            <p class="mt-0.5 text-sm font-medium" style="color: var(--color-accent);">
+              {item.role}
+            </p>
+            <p class="mt-0.5 text-xs" style="color: var(--color-text-muted);">
+              {item.location}
+            </p>
+
+            {!compact && (
+              <div class="mt-2">
+                <p class="text-sm" style="color: var(--color-text-secondary);">
+                  {item.description}
+                </p>
+                {item.highlights.length > 0 && (
+                  <ul class="mt-2 space-y-1">
+                    {item.highlights.map((h) => (
+                      <li
+                        class="flex items-start gap-2 text-sm"
+                        style="color: var(--color-text-secondary);"
+                      >
+                        <span style="color: var(--color-accent);" class="mt-1.5 block h-1 w-1 shrink-0 rounded-full bg-current" />
+                        {h}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</div>

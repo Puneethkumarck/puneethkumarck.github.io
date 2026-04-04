@@ -1,0 +1,88 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/Hero.astro';
+import ProjectCard from '../components/ProjectCard.astro';
+import BlogPostItem from '../components/BlogPostItem.astro';
+import { getCollection } from 'astro:content';
+
+const allProjects = await getCollection('projects');
+const featuredProjects = allProjects
+  .filter((p) => p.data.featured)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+const recentPosts = allPosts
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  .slice(0, 4);
+---
+
+<BaseLayout>
+  <Hero />
+
+  <!-- Featured Projects -->
+  <section class="border-t py-16" style="border-color: var(--color-border);">
+    <div class="mx-auto max-w-4xl px-6">
+      <h2 class="mb-8 text-sm font-semibold uppercase tracking-wider" style="color: var(--color-text-muted);">
+        Featured Projects
+      </h2>
+      <div class="grid gap-6 sm:grid-cols-2">
+        {
+          featuredProjects.map((project) => (
+            <ProjectCard
+              title={project.data.title}
+              description={project.data.description}
+              tags={project.data.tags}
+              slug={project.id}
+              github={project.data.github}
+              featured={project.data.featured}
+              stats={project.data.stats}
+            />
+          ))
+        }
+      </div>
+      <div class="mt-6 text-center">
+        <a
+          href="/projects"
+          class="text-sm font-medium transition-colors"
+          style="color: var(--color-accent);"
+        >
+          All Projects &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Latest Posts -->
+  <section class="border-t py-16" style="border-color: var(--color-border);">
+    <div class="mx-auto max-w-4xl px-6">
+      <h2 class="mb-8 text-sm font-semibold uppercase tracking-wider" style="color: var(--color-text-muted);">
+        Latest Posts
+      </h2>
+      <div>
+        {
+          recentPosts.map((post) => (
+            <BlogPostItem
+              title={post.data.title}
+              description={post.data.description}
+              date={post.data.date}
+              category={post.data.category}
+              slug={post.id}
+              body={post.body || ''}
+              series={post.data.series}
+              seriesOrder={post.data.seriesOrder}
+            />
+          ))
+        }
+      </div>
+      <div class="mt-6 text-center">
+        <a
+          href="/blog"
+          class="text-sm font-medium transition-colors"
+          style="color: var(--color-accent);"
+        >
+          All Posts &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://puneethkumarck.dev/sitemap-index.xml

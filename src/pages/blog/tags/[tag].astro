@@ -1,0 +1,49 @@
+---
+import PageLayout from '../../../layouts/PageLayout.astro';
+import BlogPostItem from '../../../components/BlogPostItem.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+  const allTags = [...new Set(allPosts.flatMap((post) => post.data.tags))];
+
+  return allTags.map((tag) => ({
+    params: { tag },
+    props: {
+      posts: allPosts
+        .filter((post) => post.data.tags.includes(tag))
+        .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf()),
+    },
+  }));
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+---
+
+<PageLayout title={`#${tag}`} subtitle={`${posts.length} post${posts.length === 1 ? '' : 's'} tagged with "${tag}"`}>
+  <div class="mb-6">
+    <a
+      href="/blog"
+      class="text-sm font-medium transition-colors"
+      style="color: var(--color-accent);"
+    >
+      ← All posts
+    </a>
+  </div>
+
+  <div>
+    {posts.map((post) => (
+      <BlogPostItem
+        title={post.data.title}
+        description={post.data.description}
+        date={post.data.date}
+        category={post.data.category}
+        slug={post.id}
+        body={post.body || ''}
+        series={post.data.series}
+        seriesOrder={post.data.seriesOrder}
+      />
+    ))}
+  </div>
+</PageLayout>
