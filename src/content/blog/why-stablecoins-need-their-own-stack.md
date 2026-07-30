@@ -449,10 +449,10 @@ DeFi yield strategies are out of scope — that's a different series. This serie
 
 ## Further Reading
 
-- **"Designing a Payment System"** — Alex Xu (Pragmatic Engineer). The canonical 4-step system-design frame.
-- **"Ledger: tracking & validating money movement"** — Stripe Engineering. How Stripe models balances as a state machine.
-- **"Five Imperatives for Stablecoin Infrastructure"** — Fireblocks. Maps infra choices to business maturity stages.
-- **"Introducing Coinbase Payments"** — Coinbase. Modular layered stack for on-chain payments.
-- **"Payments System Architecture"** — CockroachDB. Non-negotiable correctness in distributed payment systems.
-- **"Circle Payment Network"** — Circle. Stablecoin-native payment rails for cross-border settlement.
-- **"PayPal USD (PYUSD)"** — PayPal. A stablecoin issued on Ethereum and Solana, integrated into a consumer payment platform.
+- [**"Designing a Payment System"**](https://www.amazon.com/System-Design-Interview-Insiders-Second/dp/1736049119) — Alex Xu (Pragmatic Engineer). The canonical 4-step system-design frame.
+- [**"Ledger: tracking & validating money movement"**](https://stripe.dev/blog/ledger-stripe-system-for-tracking-and-validating-money-movement) — Stripe Engineering. How Stripe models balances as a state machine.
+- [**"Five Imperatives for Stablecoin Infrastructure"**](https://www.fireblocks.com/blog/stablecoin-infrastructure-five-imperatives-for-scalable-adoption) — Fireblocks. Maps infra choices to business maturity stages.
+- [**"Introducing Coinbase Payments"**](https://www.coinbase.com/payments) — Coinbase. Modular layered stack for on-chain payments.
+- [**"Payments System Architecture"**](https://www.cockroachlabs.com/solutions/usecases/payments/) — CockroachDB. Non-negotiable correctness in distributed payment systems.
+- [**"Circle Payment Network"**](https://www.circle.com/cpn) — Circle. Stablecoin-native payment rails for cross-border settlement.
+- [**"PayPal USD (PYUSD)"**](https://www.paypal.com/us/digital-wallet/manage-money/crypto) — PayPal. A stablecoin issued on Ethereum and Solana, integrated into a consumer payment platform.
