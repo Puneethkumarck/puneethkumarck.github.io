@@ -1,8 +1,8 @@
 export const SITE = {
   name: 'Puneethkumar CK',
-  title: 'Puneethkumar CK — Backend Engineer',
+  title: 'Puneethkumar CK — Lead Backend Engineer',
   description:
-    'Backend engineer building blockchain payment infrastructure and AI agents. Writing about payments, distributed systems, and agentic engineering.',
+    'Lead Backend engineer building blockchain payment infrastructure and AI agents. Writing about payments, distributed systems, and agentic engineering.',
   url: 'https://puneethkumarck.dev',
   author: 'Puneethkumar CK',
   locale: 'en-US',
@@ -27,8 +27,8 @@ export const SOCIAL_LINKS = [
     icon: 'linkedin',
   },
   {
-    name: 'Twitter',
-    url: 'https://twitter.com/puneethkumarck',
+    name: 'X',
+    url: 'https://x.com/punithck',
     icon: 'twitter',
   },
 ] as const;
