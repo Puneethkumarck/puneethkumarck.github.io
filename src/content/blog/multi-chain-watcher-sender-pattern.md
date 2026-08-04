@@ -1,6 +1,6 @@
 ---
-title: "One Pattern, Many Chains: The Publisher/Service Split"
-description: "Supporting N blockchains shouldn't cost N× the complexity. Split every chain integration into two shapes joined by one contract — a Publisher that detects money moving and a Service that builds, signs, and broadcasts — so the core of the platform never knows which chain it's talking to."
+title: "One Pattern, Many Chains: The Watcher/Sender Split"
+description: "Supporting N blockchains shouldn't cost N× the complexity. Split every chain integration into two shapes joined by one contract — a Watcher that detects money moving and a Sender that builds, signs, and broadcasts — so the core of the platform never knows which chain it's talking to."
 date: 2026-08-04
 category: stablecoin-payments
 tags:
@@ -14,15 +14,15 @@ seriesOrder: 3
 draft: false
 ---
 
-# One Pattern, Many Chains: The Publisher/Service Split
+# One Pattern, Many Chains: The Watcher/Sender Split
 
 > **TL;DR** — Supporting N blockchains shouldn't cost N× the complexity. Split every chain
-> integration into two shapes joined by one contract: a **Publisher** that watches the chain and
-> detects money moving, and a **Service** that builds, signs, and broadcasts transactions. Each
-> chain gets its own module — `eth-`, `tron-`, `utxo-`, `solana-` — but they all speak the same
-> language, and the core of the platform never knows which chain it's talking to. This post opens
-> the Chain Executor block from the Building Blocks Map (Post 02): the pattern that makes "add a
-> chain" a bounded piece of work instead of a re-architecture.
+> integration into two shapes joined by one contract: a **Watcher** that watches the chain and
+> detects money moving, and a **Sender** that builds, signs, and broadcasts transactions. Each
+> chain gets its own module — `ethereum-`, `tron-`, `solana-`, `bitcoin-` — but they all speak
+> the same language, and the core of the platform never knows which chain it's talking to. This
+> post opens the Chain Executor block from the Building Blocks Map (Post 02): the pattern that
+> makes "add a chain" a bounded piece of work instead of a re-architecture.
 > **Who this is for:** backend engineers building the chain-integration layer of a stablecoin
 > payment platform.
 
@@ -58,8 +58,8 @@ its own bugs. A fix that should land once has to land five times, in three place
 
 Post 02 drew the map: ten blocks with walls between them, and block ③ is the **Chain Executor** —
 the only block that ever touches a chain. This post opens that block. Inside it, every chain —
-EVM, account, UTXO, whatever comes next — is the same two shapes: a **Publisher** that watches
-the chain and detects money moving, and a **Service** that builds, signs, and broadcasts. Same
+EVM, account, UTXO, whatever comes next — is the same two shapes: a **Watcher** that watches
+the chain and detects money moving, and a **Sender** that builds, signs, and broadcasts. Same
 two shapes, same contracts, every chain. The fix lands once, in the pattern, and every chain gets
 it.
 
@@ -140,9 +140,9 @@ reader; the other is a writer. They have different failure modes, different scal
 different latency budgets — so they should be different components.
 
 That's the core move: **separate detection from action.** Every chain integration is two
-components — a **Publisher** (detection) and a **Service** (action) — connected by a durable
-event bus, not by direct calls. And crucially, the two jobs stay *inside* the Chain Executor
-block: nothing outside it ever sees a chain-specific type.
+components — a **Watcher** (detection) and a **Sender** (action) — connected by a durable event
+bus, not by direct calls. And crucially, the two jobs stay *inside* the Chain Executor block:
+nothing outside it ever sees a chain-specific type.
 
 ```mermaid
 graph TB
@@ -162,9 +162,9 @@ graph TB
 
 Five jobs per chain, duplicated per integration, drifting apart — that's the diagram of the story
 above. The pattern replaces it with one contract and two shapes per chain, as the next section
-shows. The mental model in one line: **a chain is not a service you call, it's a stream you read
-and a door you write through — and the platform needs exactly one way to read and one way to
-write, per chain.**
+shows. The mental model in one line: **a chain is not a black box you call, it's a stream you
+read and a door you write through — and the platform needs exactly one way to read and one way
+to write, per chain.**
 
 ---
 
@@ -176,7 +176,7 @@ graph TB
         NODE[Chain Node / RPC]
     end
 
-    subgraph "③ Chain Executor · Publisher (detection)"
+    subgraph "③ Chain Executor · Watcher (detection)"
         POLLER[Block Poller]
         DETECTOR[Transaction Detector]
         PRODUCER[Event Producer]
@@ -189,7 +189,7 @@ graph TB
         TX_ERR["&lt;chain&gt;-transaction-errors"]
     end
 
-    subgraph "③ Chain Executor · Service (action)"
+    subgraph "③ Chain Executor · Sender (action)"
         CONSUMER[Event Consumer]
         PROCESSOR[Transfer Processor]
         BUILDER[Tx Builder]
@@ -220,12 +220,12 @@ graph TB
     BROADCASTER -->|errors| TX_ERR
 ```
 
-**Publisher responsibilities (detection):**
+**Watcher responsibilities (detection):**
 1. Poll the node for new blocks (or subscribe — ZMQ for UTXO, WebSocket for some chains).
 2. Parse block contents; identify transactions to monitored addresses.
 3. Publish each detected transaction to the shared `transaction events` topic.
 
-**Service responsibilities (action):**
+**Sender responsibilities (action):**
 1. Build unsigned transactions from transfer requests.
 2. Request signing via the event-bus signing flow (never touches keys itself).
 3. Assemble the signed transaction and broadcast it.
@@ -241,10 +241,10 @@ the "doors" of this post's map — narrow, named, and stable:
 
 | Topic family | Payload (illustrative) | Produced by | Consumed by |
 |---|---|---|---|
-| `transaction events` | `{chain, txHash, toAddress, amount, token, memo?}` | every Publisher | ② Orchestrator (deposit flow), Reconciliation |
-| `signing-request` | `{transferId, inputs[], context}` | every Service | ⑤ Wallet & Custody |
-| `<chain>-signing-result` | `{transferId, signaturePerInput}` | ⑤ Wallet & Custody | that chain's Service |
-| `<chain>-transaction-errors` | `{transferId, stage, error, raw}` | that chain's Service | ops, retry, recovery |
+| `transaction events` | `{chain, txHash, toAddress, amount, token, memo?}` | every Watcher | ② Orchestrator (deposit flow), Reconciliation |
+| `signing-request` | `{transferId, inputs[], context}` | every Sender | ⑤ Wallet & Custody |
+| `<chain>-signing-result` | `{transferId, signatures[]}` | ⑤ Wallet & Custody | that chain's Sender |
+| `<chain>-transaction-errors` | `{transferId, stage, error, raw}` | that chain's Sender | ops, retry, recovery |
 
 This is the entire pattern. The rest of the post is how each chain conforms to it — and where
 they're forced to differ.
@@ -253,33 +253,33 @@ they're forced to differ.
 
 ## Deep Dive: How Each Chain Fits the Pattern
 
-Every chain implements the same Publisher/Service split, but the *internals* differ. Here's the
+Every chain implements the same Watcher/Sender split, but the *internals* differ. Here's the
 matrix, then the per-chain detail.
 
-| Chain | Money model | Publisher transport | Service quirk | Module prefix |
+| Chain | Money model | Watcher transport | Sender quirk | Module |
 |---|---|---|---|---|
-| Ethereum | Account | Web3j reactive streams (block + tx subscription) | EIP-1559, single sig | `eth-` |
-| **Base / Arbitrum / Optimism / Polygon / Avalanche** | Account (EVM) | Same as Ethereum | Same code, different RPC + chain ID | `base-`, `arb-`, … |
+| Ethereum | Account | block + pending-tx subscription | EIP-1559, single sig | `ethereum-` |
+| **Base / Arbitrum / Optimism / Polygon / Avalanche** | Account (EVM) | Same as Ethereum | Same code, different RPC + chain ID | `base-`, `arbitrum-`, … |
 | Tron | Account | HTTP polling (gRPC + protobuf) | Tx hash known pre-broadcast (RPC creates tx) | `tron-` |
-| Solana | Account | BlockPoller + state mgmt | Needs DB-tracked sync state | `solana-` |
-| Bitcoin / Litecoin / Dogecoin | UTXO | bitcoinj block scanning (P2P/RPC) | Input selection, 1 sig per input | `utxo-` |
+| Solana | Account | poller + persisted sync state | Needs DB-tracked sync state | `solana-` |
+| Bitcoin / Litecoin / Dogecoin | UTXO | P2P block scanning | Input selection, 1 sig per input | `bitcoin-`, … |
 | Ripple (XRP) | Account + memo | WebSocket + polling | Destination tag for deposits | `ripple-` |
 | Tempo / Arc / Plasma (stablechains) | Account (EVM) | Same as Ethereum | EVM-compatible, sub-second finality | per-chain |
 
 ### EVM chains: Ethereum, and the L2s that come almost free
 
-Ethereum is the reference implementation. The **Publisher** subscribes to new blocks and pending
-transactions via Web3j reactive streams, detects transactions to monitored addresses, and
-publishes to `transaction events`. The **Service** builds an EIP-1559 transaction, hashes the
-RLP-encoded raw tx, sends the hash for signing, and on the signature result calls
-`web3j.ethSendRawTransaction()`. Always a single input to sign (account model). It publishes
-failures to `eth-service-transaction-errors`.
+Ethereum is the reference implementation. The **Watcher** subscribes to new blocks and pending
+transactions, detects transactions to monitored addresses, and publishes to `transaction events`.
+The **Sender** builds an EIP-1559 transaction, hashes the RLP-encoded raw tx, sends the hash for
+signing, and on the signature result broadcasts the raw transaction through the SDK. Always a
+single input to sign (account model). It publishes failures to the chain's
+`<chain>-transaction-errors` topic.
 
 Here's the payoff of the pattern: **Base, Arbitrum, Optimism, Polygon, and Avalanche are the same
-code.** They're all EVM account chains. A new one is a new module prefix, a new RPC endpoint, and
-a new chain ID in config — the Publisher/Service logic, the signing contract, and the event
-schema are unchanged. The same applies to the new **stablechains** (Tempo, Arc, Plasma): all
-EVM-compatible, so they slot into the Ethereum-shaped module with chain-specific finality tuning.
+code.** They're all EVM account chains. A new one is a new module, a new RPC endpoint, and a new
+chain ID in config — the Watcher/Sender logic, the signing contract, and the event schema are
+unchanged. The same applies to the new **stablechains** (Tempo, Arc, Plasma): all EVM-compatible,
+so they slot into the Ethereum-shaped module with chain-specific finality tuning.
 
 This is the single strongest argument for the pattern: the marginal cost of the 6th EVM chain
 approaches zero.
@@ -287,22 +287,21 @@ approaches zero.
 ### Tron: account model, but the RPC creates the transaction
 
 Tron is account-based like Ethereum, so the structure is identical — but with one inversion.
-Ethereum builds the raw tx locally, then broadcasts. Tron's flow goes through the RPC first:
-`TronHttpClient.createTransaction` returns the transaction (and its hash) *before* broadcast.
-The signing request carries that Tron tx hash; the `TronSigner` applies the returned signature;
-broadcast goes via `TronHttpClient.broadcastHexResult()`. Same Publisher/Service split, same
-event contract, one chain-specific construction detail. Tron matters because it dominates USDT
-volume in emerging-market corridors — you can't ignore it even though it's "just another account
-chain."
+Ethereum builds the raw tx locally, then broadcasts. Tron's flow goes through the RPC first: the
+RPC creates the transaction — and therefore its hash — *before* broadcast. The signing request
+carries that hash; the Sender applies the returned signature; broadcast goes through the RPC's
+broadcast call. Same Watcher/Sender split, same event contract, one chain-specific construction
+detail. Tron matters because it dominates USDT volume in emerging-market corridors — you can't
+ignore it even though it's "just another account chain."
 
 ### Solana: account model, but you must track sync state
 
-Solana's throughput forces the Publisher to do more work. Instead of naive polling, it uses a
-`BlockPoller` + `BlockConsumer` + a `BlockchainStateManagement` component, backed by PostgreSQL
-tables (Flyway migrations V1–V3) that track how far the poller has synced. Without that, a
-high-throughput chain will drop or double-process blocks on restart. The Service side stays in
-pattern (single-input signing, broadcast), but the Publisher needs its own persistence for block
-state. Lesson: **the pattern holds, but high-throughput chains push state into the Publisher.**
+Solana's throughput forces the Watcher to do more work. Instead of naive polling, it pairs the
+poller with a sync-state component backed by PostgreSQL tables (schema migrations) that track how
+far the poller has synced. Without that, a high-throughput chain will drop or double-process
+blocks on restart. The Sender side stays in pattern (single-input signing, broadcast), but the
+Watcher needs its own persistence for block state. Lesson: **the pattern holds, but
+high-throughput chains push state into the Watcher.**
 
 ### UTXO chains: a different money model, hidden behind the same contract
 
@@ -310,32 +309,34 @@ Bitcoin, Litecoin, and Dogecoin are the real test of the abstraction, because UT
 fundamentally different from account models. A transaction doesn't debit a balance — it consumes
 specific unspent outputs. Two consequences:
 
-**1. Input selection.** Before signing, the Service must choose which UTXOs fund the transfer.
-This is the `SpendableInputSelector`, and its fee-aware variant `WorstCaseFeeSpendableInputSelector`,
-which selects inputs assuming worst-case fees so the transaction isn't underfunded and rejected.
+**1. Input selection.** Before signing, the Sender must choose which UTXOs fund the transfer.
+This is the input selector, and its fee-aware variant, which selects inputs assuming worst-case
+fees so the transaction isn't underfunded and rejected.
 
 **2. Multiple signatures.** An account tx has one signer; a UTXO tx has one signature *per input*.
-So the `SigningRequest` carries a list of `InputToSign` entries — one per UTXO being spent — and
-the Vault returns a `signaturePerInput` map. The Service then applies each signature according to
-the address format:
+So the signing request carries a list of inputs — one per UTXO being spent — and the custody
+service returns a signature per input. The Sender then applies each signature according to the
+output's address format:
 
 ```java
-if (AddressFormat.P2PKH.equals(addressFormat)) {
-  addSignatureForP2PKHAddress(input, address, signature);
-} else if (AddressFormat.P2WPKH.equals(addressFormat)) {
-  addSignatureForP2WPKHAddress(input, address, signature); // SegWit
+for (var input : inputs) {
+  if (input.addressFormat() == P2PKH) {
+    tx.addSignatureP2PKH(input, address, signature);
+  } else if (input.addressFormat() == P2WPKH) {
+    tx.addSignatureP2WPKH(input, address, signature); // SegWit
+  }
 }
 ```
 
-Detection also differs: the Publisher monitors the chain via **bitcoinj** (block scanning over
-P2P/RPC) rather than polling an HTTP RPC endpoint. The crucial point — *none of this leaks past
-the Service.* The `transaction events` it emits and the signing contract it uses are the same
-shape as Ethereum's. UTXO's weirdness is fully contained in the `utxo-` module.
+Detection also differs: the Watcher monitors the chain over P2P block scanning rather than
+polling an HTTP RPC endpoint. The crucial point — *none of this leaks past the Sender.* The
+`transaction events` it emits and the signing contract it uses are the same shape as Ethereum's.
+UTXO's weirdness is fully contained in the bitcoin module.
 
 ### Ripple (XRP): account model plus a memo you must not lose
 
 XRP is account-based, but exchanges and platforms typically use a single address with a
-**destination tag** (memo) to attribute deposits to users. The Publisher must extract the
+**destination tag** (memo) to attribute deposits to users. The Watcher must extract the
 destination tag and carry it through the event, or deposits can't be reconciled to users. This is
 a small chain-specific field that the shared event schema has to make room for — a memo/tag
 field that's empty for chains that don't use it.
@@ -347,7 +348,7 @@ EVM-compatible, target sub-second finality, and use stablecoin-native gas (no vo
 token for fees — Arc uses USDC for gas, Plasma offers zero-fee USDT transfers via a paymaster).
 Because they're EVM, they fit the Ethereum-shaped module. The differences that matter operationally
 are **finality time** (affects confirmation thresholds) and **gas model** (affects fee logic in the
-Service). Both are config, not architecture. As of early 2026 only Plasma is live on mainnet;
+Sender). Both are config, not architecture. As of early 2026 only Plasma is live on mainnet;
 Tempo and Arc are testnet — so treat them as "follow the EVM module, tune finality, watch the
 gas model."
 
@@ -357,65 +358,61 @@ gas model."
 
 The part of the design that most cleanly proves "chain-agnostic" is signing. Every chain uses the
 same asynchronous flow over the spine, so **private keys never leave the vault** and chain
-services never see key material:
+modules never see key material:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant OR as ② Orchestrator
-    participant SV as ③ Service (per-chain)
+    participant SD as ③ Sender (per-chain)
     participant SP as ⑨ Event Spine
     participant VA as ⑤ Wallet & Custody
 
-    OR->>SV: buildSignBroadcast(transferId, asset, amount, destination)
-    SV->>SP: signing-request {transferId, inputs[], context}
+    OR->>SD: buildSignBroadcast(transferId, asset, amount, destination)
+    SD->>SP: signing-request {transferId, inputs[], context}
     SP->>VA: consumed, policy-checked
-    VA-->>SP: &lt;chain&gt;-signing-result {signaturePerInput}
-    SP-->>SV: consumed
-    SV->>SV: assemble signed tx
-    SV->>OR: status SUBMITTED
-    SV->>SP: transaction event {UNCONFIRMED}
-    Note over SV: watches confirmations / detects stuck
-    SV->>SP: transaction event {CONFIRMED | STUCK}
+    VA-->>SP: &lt;chain&gt;-signing-result {transferId, signatures[]}
+    SP-->>SD: consumed
+    SD->>SD: assemble signed tx
+    SD->>OR: status SUBMITTED
+    SD->>SP: transaction event {UNCONFIRMED}
+    Note over SD: watches confirmations / detects stuck
+    SD->>SP: transaction event {CONFIRMED | STUCK}
     alt STUCK
-        OR->>SV: rebuild with higher fee, same nonce (RBF)
+        OR->>SD: rebuild with higher fee, same nonce (RBF)
     end
 ```
 
 Step by step:
 
-1. A chain Service builds an unsigned tx and calls `SigningRequestCreator.createAndPublish()`.
-2. A `SigningRequest` (transfer ID, list of `InputToSign`, context with the encoded raw tx +
-   network) is published to the shared `signing-request` topic.
-3. The Vault service (`enclave` sub-module, HSM/secure-enclave backed) signs each `dataToSign`.
-4. A `SigningResult` (a `signaturePerInput` map + the round-tripped request) goes to a
-   chain-specific topic, e.g. `eth-service-signing-result`.
-5. The chain Service consumes it, assembles the signed tx, and broadcasts.
+1. A chain's Sender builds an unsigned tx and publishes a signing request.
+2. The request (transfer id, the list of inputs, and context carrying the encoded raw
+   transaction and network) lands on the shared `signing-request` topic.
+3. The custody service (HSM / secure-enclave backed) signs each payload.
+4. A signing result (a signature-per-input map plus the round-tripped request) goes to a
+   chain-specific topic, e.g. `<chain>-signing-result`.
+5. The chain's Sender consumes it, assembles the signed tx, and broadcasts.
 
 The per-chain differences are confined to how many inputs there are and how the signature is
 applied: Ethereum/Tron = one input; UTXO = one per spent output with P2PKH/P2WPKH handling; the
-signing payload is a tx hash (EVM/Tron) or per-input script data (UTXO). The contract —
-`SigningRequest` in, `SigningResult` out — is identical everywhere.
+signing payload is a tx hash (EVM/Tron) or per-input script data (UTXO). The contract — a signing
+request in, a signing result out — is identical everywhere. The request itself is a plain,
+unremarkable structure:
 
 ```java
-@Value @Jacksonized @Builder
-public class SigningRequest {
-  @NotNull UUID transferId;
-  @Singular @NotEmpty List<InputToSign> inputs;   // 1 for account chains, N for UTXO
-  @NotNull Context context;                        // encodedRawTransaction + network
+public record SigningRequest(
+    UUID transferId,
+    List<Input> inputs,     // 1 for account chains, N for UTXO
+    TxContext context) {}   // encodedRawTransaction + network
 
-  public static class InputToSign {
-    @NotNull String address;
-    @NotNull String dataToSign;                    // hash of the raw tx (or per-input script)
-  }
-}
+public record Input(String address, String dataToSign) {}
 ```
 
 This also gives you **Replace-By-Fee for free**: a stuck tx triggers a new signing cycle with the
-same nonce and a higher fee (`TransactionRequest` type `REPLACE_BY_FEE`), reusing the exact same
-flow. The lifecycle enum tracks it: `SIGNING_REQUESTED → SIGNED → SUBMITTED`, with `BLOCKED` when
-a nonce is out of order. (Post 07 dives into stuck transactions and recovery; the point here is
-that recovery is a *caller* of the same contract, not a fourth integration shape.)
+same nonce and a higher fee (a replace-by-fee request type), reusing the exact same flow. The
+lifecycle tracks it: requested → signed → submitted, with a blocked state when a nonce is out of
+order. (Post 07 dives into stuck transactions and recovery; the point here is that recovery is a
+*caller* of the same contract, not a fourth integration shape.)
 
 ---
 
@@ -433,8 +430,8 @@ that recovery is a *caller* of the same contract, not a fourth integration shape
   topics (`<chain>-transaction-errors`), per-chain circuit breakers on node calls, so a sick
   Ethereum RPC doesn't stall Tron withdrawals. This is Post 02's "independent failure" boundary,
   applied inside the Chain Executor.
-- **Nonce/sequence gaps.** On account chains an out-of-order nonce blocks the queue — the
-  `BLOCKED` lifecycle state exists precisely for this; surface it, don't silently stall.
+- **Nonce/sequence gaps.** On account chains an out-of-order nonce blocks the queue — the blocked
+  lifecycle state exists precisely for this; surface it, don't silently stall.
 - **Confirmation thresholds set uniformly.** Sub-second-finality stablechains and 6-confirmation
   Bitcoin are not the same. Confirmation depth is per-chain config tied to each chain's reorg risk.
 - **Copy-paste as an integration strategy.** The story at the top of this post. Every time you
@@ -447,11 +444,11 @@ that recovery is a *caller* of the same contract, not a fourth integration shape
 
 The targets below are the SLOs a production platform is held to:
 
-- **Deposit detection latency:** block confirmed → `DetectedTransaction` emitted, **< 5s (p95)**.
+- **Deposit detection latency:** block confirmed → detected-transaction event emitted, **< 5s (p95)**.
 - **Withdrawal broadcast latency:** transfer request received → signed tx broadcast, **< 10s (p95)**.
 - **Confirmation tracking accuracy:** correct final status for all transfers, **99.99%**.
 - **Zero fund loss:** unreconciled on-chain vs. internal balance = **0**. This is the number that matters most.
-- **Per-chain publisher sync lag:** blocks behind tip per Publisher (alert when lag > 10 blocks; Solana especially).
+- **Per-chain watcher sync lag:** blocks behind tip per Watcher (alert when lag > 10 blocks; Solana especially).
 - **Signing round-trip time:** `signing-request` → chain `signing-result` consumed. Watch p95/p99.
 - **Broadcast success / error rate** per `<chain>-transaction-errors` topic.
 - **Nonce/sequence conflict rate:** stuck transactions from ordering issues, **< 0.01%**.
@@ -462,7 +459,7 @@ The targets below are the SLOs a production platform is held to:
 
 ## Key Takeaways
 
-- **Split every chain into a Publisher (detect) and a Service (act), joined by a durable bus.**
+- **Split every chain into a Watcher (detect) and a Sender (act), joined by a durable bus.**
   Detection and action scale and fail independently.
 - **One shared event + signing contract across all chains.** The platform core — Orchestrator,
   Ledger, workflows — never knows which chain a transfer used.
@@ -476,28 +473,28 @@ The targets below are the SLOs a production platform is held to:
 
 ## FAQ
 
-**Do I really need Kafka between the Publisher and Service?**
+**Do I really need Kafka between the Watcher and Sender?**
 You need *some* durable, decoupled buffer. Chains are unreliable, bursty, and asynchronous; a
 direct RPC call couples your detection and action lifecycles and makes retries painful. Kafka (or
 equivalent) is what lets a chain stall without stalling you.
 
 **How do I add a brand-new chain?**
-New module prefix, implement the Publisher (detect → emit `transaction events`) and the Service
-(consume signing results, build + broadcast), wire the chain's RPC + chain ID into config, set
+New module, implement the Watcher (detect → emit `transaction events`) and the Sender (consume
+signing results, build + broadcast), wire the chain's RPC + chain ID into config, set
 confirmation thresholds. For an EVM chain this is days; for a genuinely novel money model, longer.
 
 **Where does the wallet/address management live?**
 Deliberately out of scope here — deposit-address strategy and custody get their own posts. The
-Publisher just needs the set of monitored addresses; how those addresses are derived and whose
+Watcher just needs the set of monitored addresses; how those addresses are derived and whose
 keys they are is a separate concern.
 
 **Should I use a node provider or run my own nodes?**
-Both behind the same Publisher interface. A provider (Alchemy/Infura/QuickNode) is an RPC endpoint
+Both behind the same Watcher interface. A provider (Alchemy/Infura/QuickNode) is an RPC endpoint
 swap; self-hosted is the same module pointed at your own node. The pattern doesn't care.
 
 **What about cross-chain bridges / CCTP?**
 That's a routing problem on top of this layer — you still integrate each chain with the same
-Publisher/Service pattern; the bridge is an orchestration concern above it.
+Watcher/Sender pattern; the bridge is an orchestration concern above it.
 
 ## Further Reading
 
