@@ -1,19 +1,14 @@
 ---
 title: "One Pattern, Many Chains: The Watcher/Sender Split"
-description: "Supporting N blockchains shouldn't cost N× the complexity. Split every chain integration into two shapes joined by one contract — a Watcher that detects money moving and a Sender that builds, signs, and broadcasts — so the core of the platform never knows which chain it's talking to."
+description: "Watcher/Sender split for multi-chain stablecoin support."
 date: 2026-08-04
 category: stablecoin-payments
-tags:
-  - Stablecoins
-  - Payments
-  - System Design
-  - Blockchain
-  - Architecture
+tags: [Stablecoins, Payments, System Design, Blockchain, Architecture]
 series: "Stablecoin Payment Infra"
 seriesOrder: 3
 draft: false
 ---
-
+# One Pattern, Many Chains: The Watcher/Sender Split
 # One Pattern, Many Chains: The Watcher/Sender Split
 
 > **TL;DR** — Supporting N blockchains shouldn't cost N× the complexity. Split every chain
@@ -243,7 +238,7 @@ the "doors" of this post's map — narrow, named, and stable:
 |---|---|---|---|
 | `transaction events` | `{chain, txHash, toAddress, amount, token, memo?}` | every Watcher | ② Orchestrator (deposit flow), Reconciliation |
 | `signing-request` | `{transferId, inputs[], context}` | every Sender | ⑤ Wallet & Custody |
-| `<chain>-signing-result` | `{transferId, signatures[]}` | ⑤ Wallet & Custody | that chain's Sender |
+| `chain-signing-result` | `{transferId, signatures[]}` | ⑤ Wallet & Custody | that chain's Sender |
 | `<chain>-transaction-errors` | `{transferId, stage, error, raw}` | that chain's Sender | ops, retry, recovery |
 
 This is the entire pattern. The rest of the post is how each chain conforms to it — and where
@@ -371,7 +366,7 @@ sequenceDiagram
     OR->>SD: buildSignBroadcast(transferId, asset, amount, destination)
     SD->>SP: signing-request {transferId, inputs[], context}
     SP->>VA: consumed, policy-checked
-    VA-->>SP: &lt;chain&gt;-signing-result {transferId, signatures[]}
+    VA-->>SP: chain-signing-result {transferId, signatures[]}
     SP-->>SD: consumed
     SD->>SD: assemble signed tx
     SD->>OR: status SUBMITTED
