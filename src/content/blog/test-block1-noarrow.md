@@ -1,19 +1,14 @@
 ---
 title: "One Pattern, Many Chains: The Watcher/Sender Split"
-description: "Supporting N blockchains shouldn't cost N times the complexity. Split every chain integration into two shapes joined by one contract — a Watcher that detects money moving and a Sender that builds, signs, and broadcasts — so the core of the platform never knows which chain it's talking to."
+description: "Watcher/Sender split for multi-chain stablecoin support."
 date: 2026-08-04
 category: stablecoin-payments
-tags:
-  - Stablecoins
-  - Payments
-  - System Design
-  - Blockchain
-  - Architecture
+tags: [Stablecoins, Payments, System Design, Blockchain, Architecture]
 series: "Stablecoin Payment Infra"
 seriesOrder: 3
 draft: false
 ---
-
+# One Pattern, Many Chains: The Watcher/Sender Split
 # One Pattern, Many Chains: The Watcher/Sender Split
 
 > **TL;DR** — Supporting N blockchains shouldn't cost N× the complexity. Split every chain
@@ -117,21 +112,21 @@ sequenceDiagram
     participant CH as ③ Chain Executor
     participant CHAIN as Polygon RPC
 
-    Customer->>App: "send 250 USDC to 0xab..."
+    Customer->>App: "send 250 USDC to 0xab…"
     App->>GW: POST /withdrawals
     GW->>OR: start flow (idempotency key)
     OR->>CO: screen(address, amount)
     CO-->>OR: ALLOW
-    OR->>LE: reserve 250 USDC
+    OR->>LE: reserve 250 USDC (customer balance reserved)
     LE-->>OR: reserved
     OR->>CH: build + sign + broadcast (250 USDC, Polygon)
     CH->>CHAIN: eth_sendRawTransaction
     CHAIN-->>CH: txHash, status SUBMITTED
     CH-->>OR: tx id, UNCONFIRMED
     Note over CH,CHAIN: Watcher polls blocks
-    CH->>CH: confirmations = 1, 2, ..., 64
+    CH->>CH: confirmations = 1, 2, …, 64
     CH-->>OR: CONFIRMED
-    OR->>LE: settle 250 USDC
+    OR->>LE: settle 250 USDC (reserved on-chain)
     LE-->>OR: settled
     OR-->>GW: withdrawal status = SETTLED
     GW-->>App: 200 OK
@@ -224,31 +219,31 @@ to write, per chain.**
 
 ```mermaid
 graph TB
-    subgraph sgnet["Blockchain Network"]
+    subgraph "Blockchain Network"
         NODE[Chain Node / RPC]
     end
 
-    subgraph sgwatcher["③ Chain Executor · Watcher (detection)"]
+    subgraph "③ Chain Executor · Watcher (detection)"
         POLLER[Block Poller]
         DETECTOR[Transaction Detector]
         PRODUCER[Event Producer]
     end
 
-    subgraph sgspine["⑨ Event Spine — Kafka topics"]
+    subgraph "⑨ Event Spine — Kafka topics"
         TXE[transaction events]
         SIG_REQ[signing-request]
-        SIG_RES["chain-signing-result"]
-        TX_ERR["chain-transaction-errors"]
+        SIG_RES["&lt;chain&gt;-signing-result"]
+        TX_ERR["&lt;chain&gt;-transaction-errors"]
     end
 
-    subgraph sgsender["③ Chain Executor · Sender (action)"]
+    subgraph "③ Chain Executor · Sender (action)"
         CONSUMER[Event Consumer]
         PROCESSOR[Transfer Processor]
         BUILDER[Tx Builder]
         BROADCASTER[Tx Broadcaster]
     end
 
-    subgraph sgcore["Chain-agnostic core"]
+    subgraph "Chain-agnostic core"
         ORCH["② Orchestrator<br/>durable workflows"]
         VAULT["⑤ Wallet & Custody<br/>vault / MPC signing"]
         LEDGER["④ Ledger<br/>double-entry"]
@@ -311,14 +306,14 @@ same arrows out. Only the internals of the boxes change.
 
 ```mermaid
 graph TB
-    subgraph sgacct["Account chain (Ethereum, Tron, Solana, XRP, EVM L2s)"]
+    subgraph "Account chain (Ethereum, Tron, Solana, XRP, EVM L2s)"
         W1[Watcher<br/>poll blocks<br/>match toAddress]
         E1[Transaction event<br/>chain, txHash, toAddress, amount]
         S1[Sender<br/>build EIP-1559<br/>one sig, one hash]
         W1 -->|detect| E1 -->|consume| S1
     end
 
-    subgraph sgutxo["UTXO chain (Bitcoin, Litecoin, Dogecoin)"]
+    subgraph "UTXO chain (Bitcoin, Litecoin, Dogecoin)"
         W2[Watcher<br/>scan blocks<br/>match any output to us]
         E2[Transaction event<br/>chain, txHash, toAddress, amount]
         S2[Sender<br/>select inputs<br/>N sigs, one per input]
@@ -502,9 +497,9 @@ order. (Post 07 dives into stuck transactions and recovery; the point here is th
 
 ## What Breaks
 
-A list of failure modes is cheap. A picture of one is durable. Two side-by-side state diagrams of
-the most common reorg-related bug — the Watcher that doesn't handle a chain reorg — is the
-cheapest lesson in the whole post.
+A list of failure modes is cheap. A picture of one is durable. Two side-by-side diagrams of the
+most common reorg-related bug — the Watcher that doesn't handle a chain reorg — is the cheapest
+lesson in the whole post.
 
 ```mermaid
 stateDiagram-v2
@@ -541,11 +536,13 @@ stateDiagram-v2
     DONE --> SYNCED
     note right of EMIT
       Naive: tx appears "confirmed"
-      then the ledger credits it
-      then 12 hours later a reorg
+      → ledger credits the deposit
+      → 12 hours later a reorg
       drops that block
-      and the tx is gone
-      but the ledger still shows it
+      → tx is gone
+      → ledger still says deposit
+      → 250 USDC credited to a
+      payment that never happened
     end note
 ```
 
@@ -601,7 +598,7 @@ metric is the one you can draw:
 
 ```mermaid
 graph LR
-    subgraph sgbefore["Before (naive, copy-paste integrations)"]
+    subgraph BEFORE["Before (naive, copy-paste integrations)"]
         B1[New chain] --> B2[Orchestrator edit]
         B2 --> B3[Ledger edit]
         B3 --> B4[Reconciliation edit]
@@ -612,15 +609,15 @@ graph LR
         B8 --> B9[3 months, 47 files]
     end
 
-    subgraph sgafter["After (Watcher/Sender pattern)"]
+    subgraph AFTER["After (Watcher/Sender pattern)"]
         A1[New chain] --> A2[chain-watcher module]
         A2 --> A3[chain-sender module]
         A3 --> A4[config: RPC + chain ID]
         A4 --> A5[1 week, 2 new files]
     end
 
-    style sgbefore fill:#be123c,color:#fff
-    style sgafter fill:#166534,color:#fff
+    style BEFORE fill:#be123c,color:#fff
+    style AFTER fill:#166534,color:#fff
 ```
 
 The "Before" column is the system the team in the opening story was maintaining. The "After"
