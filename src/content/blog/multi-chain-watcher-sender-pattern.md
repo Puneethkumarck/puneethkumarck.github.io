@@ -14,8 +14,6 @@ seriesOrder: 3
 draft: false
 ---
 
-# One Pattern, Many Chains: The Watcher/Sender Split
-
 > **TL;DR** — Supporting N blockchains shouldn't cost N× the complexity. Split every chain
 > integration into two shapes joined by one contract: a **Watcher** that watches the chain and
 > detects money moving, and a **Sender** that builds, signs, and broadcasts transactions. Each
