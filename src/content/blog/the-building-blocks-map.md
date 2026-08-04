@@ -544,9 +544,3 @@ while the rooms are still empty.
 - [**"Bounded Contexts"**](https://martinfowler.com/bliki/BoundedContext.html) — Martin Fowler. Why the same word ("balance") means different things in different rooms, and why that's healthy.
 - [**"Ledger: tracking & validating money movement"**](https://stripe.dev/blog/ledger-stripe-system-for-tracking-and-validating-money-movement) — Stripe Engineering. One source of truth for money, with everything else a projection.
 - [**"Introducing Coinbase Payments"**](https://www.coinbase.com/payments) — Coinbase. A modular, layered on-chain payment stack — the shape of the map in production.
-
----
-
-*Next: [Post 03 — One Interface, Many Chains: The Multi-Chain Abstraction](#) — the Chain Executor
-up close. The ChainListener/ChainDispatcher split, account vs UTXO vs Solana models, and the `ChainPort`
-interface that makes "add Solana" mean exactly one new file.*
