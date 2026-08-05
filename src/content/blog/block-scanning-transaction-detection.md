@@ -19,9 +19,11 @@ draft: false
 > remembering exactly where it stopped, and emitting one idempotent event per real transfer. Get
 > the cursor wrong and a restart skips blocks. Get confirmations wrong and a reorg un-pays a
 > settled deposit. Get dedup wrong and a crash credits a customer twice. This post is the
-> detection layer, end to end: how to read five families of chains, the `DetectionState` cursor
-> that makes restarts boring, the event contract downstream services can trust, and the per-chain
-> confirmation thresholds that turn "probabilistic finality" from a slogan into a number.
+> detection layer, end to end: how to read every major chain family — EVM L1s and L2s, UTXO,
+> Tron, Solana, XRP, Cosmos/IBC, Cardano, Algorand, Stellar, and the Move chains — plus the
+> asset models that ride on them. One `DetectionState` cursor makes restarts boring, one event
+> contract is trusted by everything downstream, and per-chain confirmation thresholds turn
+> "probabilistic finality" from a slogan into a number.
 > **Who this is for:** backend engineers building the Watcher half of the chain layer — the part
 > of the system that turns a chain's firehose of blocks into a stream of payment facts.
 
@@ -68,10 +70,12 @@ Before any design, pin down what "detecting money movement" has to deliver. Stea
 device: ask the questions, write the answers down, design to them.
 
 **Q: What are we detecting?**
-A: Any transfer that touches a platform-managed address — native coin (ETH, BTC, TRX) and token
-contract transfers (ERC-20, TRC-20, SPL) alike. Deposits into customer addresses, sweep
-confirmations out of them, and withdrawal confirmations for the Sender. One detection layer
-feeds all three flows.
+A: Any transfer that touches a platform-managed address — native coin (ETH, BTC, TRX, SOL, XRP,
+ATOM, ADA, ALGO, XLM, APT, SUI) and every token standard that carries stablecoins: ERC-20 /
+BEP-20 (EVM), TRC-20 (Tron), SPL (Solana), native multi-assets (Cardano), ASAs (Algorand),
+Stellar assets (code + issuer), XRP IOUs (currency + issuer), IBC-denominated vouchers (Cosmos),
+and Move coin types (Aptos, Sui). Deposits into customer addresses, sweep confirmations out of
+them, and withdrawal confirmations for the Sender. One detection layer feeds all three flows.
 
 **Q: How fast?**
 A: Block confirmed on-chain → detection event emitted in **under 5 seconds at p95**. Detection
@@ -87,9 +91,9 @@ chain eventually settles on. **Zero double-counting** — duplicates are emitted
 **Q: What are we designing around?**
 A: Four adversaries. **Reorgs** — the chain can take back recent blocks. **Node failure** — RPC
 endpoints stall, lie, and rate-limit. **Restarts** — deploys and crashes are weekly events, and
-recovery must be gapless *and* non-duplicating at the ledger. **Chain diversity** — five
-families (EVM, UTXO, Tron, Solana, XRP) read the chain five different ways, and the detection
-contract must hide all of them from the core.
+recovery must be gapless *and* non-duplicating at the ledger. **Chain diversity** — ten chain
+families read their chains ten different ways, and the detection contract must hide all of them
+from the core.
 
 **Q: What's explicitly out of scope?**
 A: The address-matching problem at scale (millions of monitored addresses vs. every block's
@@ -157,10 +161,9 @@ missed. The rest of the post is mechanics.
 
 ## How to Read the Chain
 
-Five chain families, five reading mechanisms — and the sixth (EVM L2s / stablechains) rides the
-first one's code with a different confidence function. The Watcher pattern from Post 03 is what
-lets this diversity exist without leaking into the core: each chain module owns its reading
-mechanism, and all of them emit the same event.
+Ten chain families, ten reading mechanisms — and the same one contract. The Watcher pattern
+from Post 03 is what lets this diversity exist without leaking into the core: each chain module
+owns its reading mechanism, and all of them emit the same event.
 
 ```mermaid
 graph TD
@@ -170,7 +173,11 @@ graph TD
         UTXO["UTXO family: full-block scan via bitcoinj<br/>(every tx, every output)"]
         TRON["Tron: gRPC block stream<br/>(solidified block API)"]
         SOL["Solana: slot subscription<br/>(skipped slots are normal)"]
-        XRP["XRP: ledger polling<br/>(validated ledgers only)"]
+        XRP["XRP: validated-ledger polling<br/>(destination tags)"]
+        COSMOS["Cosmos/IBC: Tendermint tx events<br/>+ IBC packet events"]
+        CARDANO["Cardano: full-block scan<br/>(multi-asset outputs, no contracts)"]
+        STELLAR["Stellar: ledger-close polling<br/>operations inside txs + claimable balances"]
+        MOVE["Move (Aptos, Sui): event streams<br/>with sequence numbers / object versions"]
     end
 
     subgraph sgcontract["One detection contract"]
@@ -183,6 +190,10 @@ graph TD
     TRON --> EVT
     SOL --> EVT
     XRP --> EVT
+    COSMOS --> EVT
+    CARDANO --> EVT
+    STELLAR --> EVT
+    MOVE --> EVT
 
     style sgread fill:#1e3a5f,color:#fff
     style sgcontract fill:#14532d,color:#fff
@@ -239,6 +250,51 @@ consensus — once validated, it's final. Detection polls validated ledgers, and
 payment-specific wrinkle is the **destination tag**: an XRP payment to a platform address
 without its tag is detected but unroutable to a customer, and needs its own handling path.
 
+**Cosmos/IBC: events, not logs — and the packet is the money.** A Cosmos zone is Tendermint
+underneath: ~6-second blocks that are final once ⅔+ of validators sign them — no reorgs in
+practice, no confirmation-depth arithmetic. Detection subscribes to transaction events
+(`transfer.recipient` attributes for native and CW20 tokens) and, for cross-chain money, to
+**IBC packet events**: an incoming transfer is a `recv_packet` on the destination zone, and the
+asset arrives as an `ibc/<hash>` voucher denom, not the source's native denom. The dedup nuance:
+one ICS-20 transfer can surface as events on *both* the source and destination zone, so the
+dedup key must pin which side of the packet you're detecting.
+
+**Cardano: multi-asset UTXO — tokens live in outputs, not contracts.** Cardano's extended UTXO
+model has no token contracts for simple transfers: an output carries a list of
+`(policyId, assetName, amount)` pairs, so a single transaction can move a dozen assets to a
+platform address and the scanner reads them all from the outputs. Same full-block-scan mechanics
+as Bitcoin, plus two wrinkles: **min-UTXO-ADA** (an output below ~1 ADA is unspendable — reject
+at detection, the same dust discipline as Bitcoin) and **asset identity** — the dedup key must
+include the asset, because one tx can pay in multiple native assets simultaneously. Slots are 20
+seconds and the confirmation convention runs deeper than Bitcoin's (10–20 slots).
+
+**Algorand: rounds, and a chain that doesn't reorg.** Algorand's Pure Proof-of-Stake is
+fork-free in normal operation — a certified round is final, period. Detection polls the
+indexer for new rounds and watches `axfer` transactions for ASA (Algorand Standard Asset)
+transfers; the asset is an integer ID, and each ASA carries its own decimals parameter. The
+confirmation question mostly evaporates — a handful of rounds is belt-and-braces, not a risk
+model.
+
+**Stellar: ledger closes, operations, and money that needs claiming.** Stellar closes a ledger
+every ~5 seconds via SCP consensus; validated ledgers are final. Detection polls Horizon for new
+ledgers and scans *operations* inside each transaction (a tx can carry several payments).
+Three Stellar-specific wrinkles: assets are **(code, issuer)** pairs — the same ticker from a
+different issuer is a different asset, so asset identity is two fields, not one; inbound
+payments require a **memo** to route to a customer, like an XRP tag; and funds can arrive as
+**claimable balances** — a sender creates a balance the platform must *claim* before the money
+is spendable, and unclaimed balances expire after a time bound. Detection must watch
+`CreateClaimableBalance` operations, not just payments.
+
+**Move chains (Aptos, Sui): events with sequence numbers — the dedup key gets a third shape.**
+Aptos and Sui are BFT-finality chains: a block is final at ~1 second, no reorgs to speak of.
+Detection reads **event streams** (Aptos event handles; Sui object/checkpoint events) rather
+than logs or blocks. The wrinkle that matters for this post: an event's identity is its
+**sequence number within its event handle** (Aptos) or an **object version** (Sui), not a
+logIndex or vout — so the dedup key for these chains is `(network, eventKey/objectId,
+sequence/version)`. Token models differ from everything above: coins are typed
+(`0x1::aptos_coin::AptosCoin`), and Sui moves *objects*, so a payment is a versioned coin object
+changing hands. Same cursor, same event contract; a different dedup dimension.
+
 | Chain family | Read mechanism | Finality signal | Detection-specific wrinkle |
 |---|---|---|---|
 | EVM L1 (Ethereum, BSC, Polygon) | `eth_getLogs` range scan | Confirmation depth (e.g. 12 blocks) | Token transfers are logs, not txs |
@@ -248,6 +304,11 @@ without its tag is detected but unroutable to a customer, and needs its own hand
 | Tron | gRPC block stream | Solidified block | Head = provisional, solidified = final |
 | Solana | Slot subscription | Finalized commitment (~32 slots) | Skipped slots; fast lag accumulation |
 | XRP | Validated-ledger polling | Validation (immediate) | Destination-tag extraction |
+| Cosmos / IBC | Tendermint tx-event subscription | ⅔+ validator vote (~6s blocks) | IBC packets: source-side vs destination-side events; `ibc/<hash>` voucher denoms |
+| Cardano | Full-block scan (EUTXO) | Confirmation depth (10–20 slots) | Multi-asset outputs; min-UTXO-ADA dust; asset in the dedup key |
+| Algorand | Indexer round polling | Round certification (no reorgs) | ASAs are integer IDs; per-asset decimals; `axfer` txs |
+| Stellar | Horizon ledger-close polling | Validation (immediate) | (code, issuer) asset identity; memos; claimable balances |
+| Move (Aptos, Sui) | Event stream subscription | BFT finality (~1s) | Dedup by event sequence / object version, not logIndex |
 
 Whichever mechanism, one cross-cutting rule: **every node call sits behind a per-chain circuit
 breaker.** A production config: open the breaker at a 40% failure rate over a ten-call sliding
@@ -257,6 +318,36 @@ morning, the Ethereum Watcher pauses and alerts — and Tron, Solana, and Bitcoi
 notice. This is Post 02's independent-failure boundary, applied at the node boundary, and Post
 03's per-chain error topics (`<chain>-transaction-errors`) are where the failures land for
 ops to see.
+
+### Assets: The Other Half of Detection
+
+Reading blocks is half the job; knowing *what money* you saw is the other half. Every asset
+model above answers three questions differently — **what identifies the asset, how many
+decimals it has, and where its transfers surface** — and a platform that treats "USDC" as one
+thing across chains is building a reconciliation bug:
+
+| Asset model | Families | Asset identity | Decimals | Where transfers surface |
+|---|---|---|---|---|
+| ERC-20 / BEP-20 | EVM L1s, L2s, stablechains | Contract address | Per-contract (USDC: 6, most: 18) | `Transfer` logs |
+| TRC-20 | Tron | Contract address | 6 (USDT/USDC convention) | Contract events |
+| SPL | Solana | Mint address | Per-mint (9 is common) | Instruction parsing / token accounts |
+| Native multi-asset | Cardano | `(policyId, assetName)` | Per-policy (6 convention for stablecoins) | Tx outputs |
+| ASA | Algorand | Asset ID (integer) | Per-ASA parameter | `axfer` transactions |
+| Stellar asset | Stellar | `(code, issuer)` | 7 default (per-asset override) | Payment / PathPayment operations |
+| XRP IOU | XRP Ledger | `(currency, issuer)` | 15 for IOUs, 6 for XRP | Payment operations with currency |
+| IBC voucher | Cosmos | `ibc/<hash>` denom | Inherited from source chain | `recv_packet` events |
+| Move coin | Aptos, Sui | Coin type / object type | Per-type (`0x1::aptos_coin::AptosCoin`: 8) | Event streams |
+
+Two consequences for the detection layer. First, **asset identity belongs in the event and in
+the dedup key** — the Cardano output that carries three native assets, the Stellar payment where
+the *same* ticker has two issuers, and the Cosmos voucher whose source denom you can't see are
+all cases where `(network, txHash, logIndex)` alone would merge or drop money. Asset-aware
+dedup is `(network, txHash, position, asset)` for multi-asset chains, and the asset field
+carries the chain-native identity, not a ticker. Second, **decimals are config, not code** —
+the difference between 6 and 18 decimals is the difference between $1.00 and $0.0000000001
+credited, and every chain module needs its own conversion table (Post 13 opens token support
+properly). Detection emits the chain-native integer amount plus the asset; the ledger applies
+the conversion — never the other way around.
 
 ---
 
@@ -340,15 +431,15 @@ are trust and idempotency, not richness.
 
 ```java
 public record DetectedTransaction(
-    String network,          // 'ethereum', 'bitcoin', ...
+    String network,          // 'ethereum', 'bitcoin', 'cosmos', ...
     String txHash,           // chain-native transaction id
-    long blockNumber,        // where we saw it
+    long blockNumber,        // where we saw it (block / round / ledger / slot)
     String blockHash,        // which fork we saw it on (reorg key)
     String fromAddress,
     String toAddress,
-    BigDecimal amount,
-    String asset,            // 'USDC', 'ETH', 'BTC', ...
-    int logIndex,            // EVM: position in receipt | UTXO: vout | Solana: instruction idx
+    BigDecimal amount,       // chain-native integer amount, un-converted
+    String asset,            // chain-native asset identity ('USDC', 'ibc/<hash>', 'USDC:issuer', ...)
+    String dedupKey,         // chain-specific position: logIndex | vout | op index | event seq
     long timestamp
 ) {}
 ```
@@ -359,10 +450,14 @@ Three fields carry the correctness load, and each exists because of a bug class:
   *hashes* are not. When the chain reorganizes, the same transaction reappears at the same
   height on a *different* block hash. Recording the hash is what lets the confirmation tracker
   notice "the block I trusted is gone" — compare hashes, not heights.
-- **`logIndex` (or `vout`, or instruction index).** One transaction can move money twice — a
-  native transfer plus a token transfer, or two outputs to platform addresses. The dedup key is
-  never the tx hash alone; it's **`(network, txHash, logIndex)`**. This is the line that makes
-  "at-least-once emission, exactly-once crediting" possible.
+- **`logIndex` (or `vout`, or event sequence, or object version).** One transaction can move
+  money twice — a native transfer plus a token transfer, two outputs to platform addresses, or a
+  Stellar tx with several payment operations. The dedup key is never the tx hash alone; it's
+  **`(network, txHash, position)`**, where position is whatever the chain numbers uniquely
+  inside a transaction — `logIndex` on EVM, `vout` on UTXO and Cardano, operation index on
+  Stellar and XRP, event sequence on Aptos, object version on Sui. On multi-asset chains the
+  key gains a fourth component: the asset itself. This is the line that makes "at-least-once
+  emission, exactly-once crediting" possible.
 - **`network`, explicitly.** Chain IDs colliding across ecosystems is not hypothetical. The
   platform's namespace is the network enum, and every dedup key, cursor row, and Kafka partition
   key carries it.
@@ -413,6 +508,11 @@ per-chain risk decision, not a universal constant:
 | Solana | ~32 slots (finalized) | ~13 s | "Finalized" is a consensus state, not a heuristic count |
 | Tron | solidified block | ~1 min | Finality is an API concept, not a count |
 | XRP | validated ledger | ~5 s | Validation is final; threshold is 1 |
+| Cosmos zones | 1 block (⅔+ signed) | ~6 s | Tendermint finality; no reorg arithmetic |
+| Cardano | 10–20 slots | ~4–7 min | Deep convention for a chain that has reorged in anger |
+| Algorand | 1–5 rounds | ~3–15 s | Fork-free by design; rounds are belt-and-braces |
+| Stellar | 1 validated ledger | ~5 s | SCP finality; threshold is 1 |
+| Aptos / Sui | 1 block | ~1 s | BFT finality; threshold is 1 |
 
 Two design points matter more than any number in the table. First, **the threshold is config per
 network, not code** — the day a chain's risk profile changes (a hashpower drop, a new finality
@@ -471,6 +571,10 @@ hurts on the bad day.
 | Dust output credited, never spendable | Reject sub-dust outputs at detection | A balance the platform can never move — a permanent liability |
 | Deep reorg past the threshold | CONFIRMED → UNCONFIRMED edge exists; exception queue; Post 19/20 machinery | The status model lies exactly when truth matters most |
 | One tx, two transfers — one deduped away | Dedup key includes `logIndex`/`vout`, not just hash | Token leg credited, native leg silently dropped |
+| IBC packet relayed but never received | Watch source-side AND destination-side events; reconciliation on voucher denoms | Customer's money stranded in a channel timeout |
+| Cardano multi-asset output mis-parsed | Asset-aware parsing; `(policyId, assetName)` per output | One tx paying in 3 assets credits only 1 |
+| Stellar claimable balance expires unclaimed | Watch `CreateClaimableBalance`; claim before time bound | Customer's deposit reverts to sender silently |
+| Same ticker, different issuer merged | Asset identity is `(code, issuer)`, never the ticker | USDC from issuer A credited as issuer B's |
 
 The two works/broken pairs from Post 03 (the reorg-aware vs naive Watcher) are the visual
 version of the first three rows; the difference between the diagrams was one arrow, and the
@@ -512,11 +616,16 @@ detection layer completely.
   how deposits vanish — or double.
 - **Emit first, then move the cursor.** The crash window produces a duplicate (cheap, absorbed
   by idempotency) instead of a gap (permanent, found by an angry customer).
-- **The dedup key is `(network, txHash, logIndex)` — never the tx hash alone.** One transaction
-  can carry multiple transfers; at-least-once delivery plus this key gives exactly-once
-  crediting.
+- **The dedup key is `(network, txHash, position)` — never the tx hash alone.** Position is
+  `logIndex` on EVM, `vout` on UTXO, operation index on Stellar/XRP, event sequence on Aptos,
+  object version on Sui; multi-asset chains add the asset itself. At-least-once delivery plus
+  this key gives exactly-once crediting.
 - **Record block *hashes*, not just heights.** A reorg keeps the number and changes the hash;
-  that comparison is your reorg detector.
+  that comparison is your reorg detector. (Some chains never reorg — Tendermint, Algorand,
+  Stellar, BFT Move chains — and for them the threshold collapses to 1.)
+- **Asset identity is chain-native, and decimals are config.** `(code, issuer)` on Stellar,
+  `(policyId, assetName)` on Cardano, `ibc/<hash>` vouchers on Cosmos, contract/mint/ASA IDs
+  elsewhere — detection emits the chain-native identity and integer amount; the ledger converts.
 - **Confirmation thresholds are per-chain config tied to reorg risk and product exposure** —
   BTC 6, ETH 12, DOGE 40, Solana "finalized," Tron "solidified," XRP validated. A config row,
   not a code constant.
@@ -566,12 +675,25 @@ cheaply. This post covers everything around that match — the cursor, the event
 confirmations, the failure modes. The bloom filter is how you find the needle; this post is
 what you do once you've found it.
 
+**What about chains that aren't in the "big five" — Cosmos, Cardano, Algorand, Stellar, Move?**
+Same contract, different reading mechanism. Tendermint zones read tx events and IBC packet
+events; Cardano scans multi-asset UTXO outputs; Algorand polls rounds for `axfer` txs; Stellar
+polls ledger closes for operations (plus claimable balances); Aptos/Sui subscribe to event
+streams with sequence-number dedup. The cursor, the emit-then-cursor ordering, and the
+confirmation config all carry over unchanged — which is the whole point of the Watcher pattern:
+chain diversity lives in the module, never in the core.
+
 ## Further Reading
 
 - [**Ethereum Execution API specification**](https://ethereum.github.io/execution-apis/) — `eth_getLogs`, `eth_subscribe`, and the semantics of block ranges your EVM scanner lives on.
 - [**Bitcoin Developer Guide: Transactions**](https://developer.bitcoin.org/devguide/transactions.html) — the UTXO model, outputs, and why dust thresholds exist.
 - [**bitcoinj documentation**](https://bitcoinj.org/) — the block-stream and reorganization-callback mechanics behind the UTXO scanner.
 - [**Solana docs: Commitment & Finality**](https://solana.com/docs) — processed/confirmed/finalized, skipped slots, and what ~32 slots of finality actually means.
+- [**IBC protocol documentation**](https://ibc.cosmos.network/) — ICS-20 packet semantics, voucher denoms, and why source-side and destination-side events both matter.
+- [**Cardano Developer Portal**](https://developers.cardano.org/) — the extended UTXO model, native multi-assets, and min-UTXO-ADA rules.
+- [**Algorand Developer Portal**](https://developer.algorand.org/) — rounds, ASAs, and the indexer API your `axfer` detection polls.
+- [**Stellar Developers**](https://developers.stellar.org/) — operations, (code, issuer) assets, memos, and claimable balances.
+- [**Aptos documentation**](https://aptos.dev/) and [**Sui documentation**](https://docs.sui.io/) — event streams, coin types, and object-version semantics for the Move families.
 - [**Tron protocol documentation**](https://developers.tron.network/) — the gRPC block APIs and the solidified-block concept.
 - [**XRPL docs: Ledgers & Consensus**](https://xrpl.org/docs.html) — validated ledgers, destination tags, and why XRP detection is the easy case.
 - [**"Ledger: tracking & validating money movement"**](https://stripe.dev/blog/ledger-stripe-system-for-tracking-and-validating-money-movement) — Stripe Engineering. What happens to a detection event after it's believed: the ledger as the single source of truth (Post 11 in this series).
