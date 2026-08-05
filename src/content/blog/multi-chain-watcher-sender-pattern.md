@@ -15,12 +15,15 @@ draft: false
 ---
 
 > **TL;DR** — Supporting N blockchains shouldn't cost N× the complexity. Split every chain
-> integration into two shapes joined by one contract: a **Watcher** that watches the chain and
-> detects money moving, and a **Sender** that builds, signs, and broadcasts transactions. Each
-> chain gets its own module — `ethereum-`, `tron-`, `solana-`, `bitcoin-` — but they all speak
-> the same language, and the core of the platform never knows which chain it's talking to. This
-> post opens the Chain Executor block from the Building Blocks Map (Post 02): the pattern that
-> makes "add a chain" a bounded piece of work instead of a re-architecture.
+> integration into two shapes joined by one contract:
+>
+> - **Watcher** — watches the chain, detects money moving.
+> - **Sender** — builds, signs, and broadcasts transactions.
+>
+> Each chain gets its own module — `ethereum-`, `tron-`, `solana-`, `bitcoin-` — but they all
+> speak the same language, and the core of the platform never knows which chain it's talking to.
+> This post opens the Chain Executor block from the Building Blocks Map (Post 02): the pattern
+> that makes "add a chain" a bounded piece of work instead of a re-architecture.
 > **Who this is for:** backend engineers building the chain-integration layer of a stablecoin
 > payment platform.
 
@@ -56,10 +59,13 @@ its own bugs. A fix that should land once has to land five times, in three place
 
 Post 02 drew the map: ten blocks with walls between them, and block ③ is the **Chain Executor** —
 the only block that ever touches a chain. This post opens that block. Inside it, every chain —
-EVM, account, UTXO, whatever comes next — is the same two shapes: a **Watcher** that watches
-the chain and detects money moving, and a **Sender** that builds, signs, and broadcasts. Same
-two shapes, same contracts, every chain. The fix lands once, in the pattern, and every chain gets
-it.
+EVM, account, UTXO, whatever comes next — is the same two shapes:
+
+- **Watcher** — watches the chain, detects money moving.
+- **Sender** — builds, signs, and broadcasts.
+
+Same two shapes, same contracts, every chain. The fix lands once, in the pattern, and every
+chain gets it.
 
 ---
 
@@ -500,9 +506,9 @@ order. (Post 07 dives into stuck transactions and recovery; the point here is th
 
 ## What Breaks
 
-A list of failure modes is cheap. A picture of one is durable. Two side-by-side state diagrams of
-the most common reorg-related bug — the Watcher that doesn't handle a chain reorg — is the
-cheapest lesson in the whole post.
+A list of failure modes is cheap. A picture of one is durable. Here's the most common
+reorg-related bug — the Watcher that doesn't handle a chain reorg — drawn twice: once done
+right, once done naively. It's the cheapest lesson in the whole post.
 
 ```mermaid
 stateDiagram-v2
@@ -547,10 +553,11 @@ stateDiagram-v2
     end note
 ```
 
-The right diagram is the same shape as the left, with one line added: **the Watcher re-emits
-when a block is reorged out, and downstream consumers are idempotent on `(chain, txHash)`.**
-The wrong diagram does no re-emit. Both diagrams "work" in the happy case — the bug only shows
-up on the day a real reorg happens, which is exactly the day you cannot afford the bug.
+The first diagram is the same shape as the second, with one behavior added: **the Watcher
+re-emits when a block is reorged out, and downstream consumers are idempotent on `(chain,
+txHash)`.** The second diagram does no re-emit. Both diagrams "work" in the happy case — the bug
+only shows up on the day a real reorg happens, which is exactly the day you cannot afford the
+bug.
 
 The same shape applies to every other failure in the list below: each is a *missing idempotency
 key*, a *missing re-emit*, a *missing isolation* — drawn as one absent arrow that you can see
