@@ -512,3 +512,96 @@ ledger that never settled on anything less than the confirmed threshold.
 ---
 
 ## How We Measure It
+
+The pipeline's health is a handful of numbers, and one of them is a law:
+
+| Metric | Target | Why |
+|---|---|---|
+| Double-sends (same withdrawal, two landed txs) | **0 — invariant, not target** | Each occurrence is a direct treasury loss and a trust event. Alert on any candidate (two signatures, two hashes for one withdrawal) even when the chain catches one. |
+| Build + sign latency (p95) | < 2 s | Human approval flows and treasury cutoffs feel every extra second. |
+| Sign → first broadcast (p95) | < 5 s | A signed transaction sitting un-broadcast is untracked risk. |
+| Broadcast success rate | > 99.5% | Below that, node health or build validation is degrading; investigate, don't just retry harder. |
+| Receipt coverage | 100% of broadcast txs have a receipt record within 60 s | A broadcast with no tracking is a transaction the platform has lost sight of. |
+| Signer availability | 99.95% | The vault is on the critical path of every withdrawal; its outage is a platform outage for sends. |
+| EXPIRED attempts | trended, alert on spikes | Spikes mean build is using stale blockhashes or the pipeline is stalling between sign and submit. |
+
+The invariant deserves emphasis: double-sends are measured as *candidates*, not just outcomes. If
+the vault ever produces two signatures for one `(withdrawalId, attempt)`, or the broadcast store
+ever holds two hashes for one withdrawal attempt, that's an alert at 3 a.m. even if the network
+only landed one of them — the structure failed, and the network's mercy isn't a control.
+
+---
+
+## Key Takeaways
+
+1. **A Sender is a pipeline with one signing boundary.** Build and confirm are chain-specific;
+   sign, broadcast, and receipt tracking are one shared contract. That's the Post 03 pattern
+   applied to outbound money.
+2. **A rebuild is a fresh decision; a retry is a resubmit.** Every double-spend in the wild traces
+   to confusing the two. Persist build inputs and signed payloads per attempt, and make retries
+   hash-keyed resubmissions.
+3. **A timeout means UNKNOWN, never FAILED.** The legal next step after a lost broadcast response
+   is tracking by hash, not rebuilding.
+4. **The vault signs policy, not just bytes.** One signature per `(withdrawalId, attempt)`, policy
+   checked before signing, hash returned and verified — the boundary makes double-sends
+   structurally impossible, not merely unlikely.
+5. **Confirmation is the Watcher's job.** The Sender hands every broadcast hash to Post 04's
+   machinery and reuses its thresholds verbatim — one definition of "confirmed" for the whole
+   platform.
+
+---
+
+## FAQ
+
+**Why not just use a wallet library that does build-sign-broadcast in one call?**
+Because the one-call shape is exactly the shape that double-spends on retry. Libraries optimize
+for "send a transaction"; platforms need "send *this withdrawal* at most once, with an audit
+trail, through a policy-gated signer, across five chain models." The pipeline exists because the
+unit of work is the withdrawal, not the transaction — and the withdrawal's idempotency key,
+attempt numbers, and receipt record all live outside any single library call.
+
+**On EVM, if two signed transactions share a nonce, can't only one land?**
+Correct — same-nonce pairs are a race where at most one wins (higher fee typically replaces).
+The dangerous pair has *different* nonces: the first transaction lands, the retry re-fetches, and
+the second transaction is fully valid too. The opening incident is that case. The vault's
+one-signature-per-attempt rule stops it before nonces are even consulted.
+
+**Why is Solana the model people double-spend on most often?**
+Because its safety property (the blockhash window) makes naive retries *look* broken: the
+transaction "expires," an engineer adds a retry-with-fresh-blockhash, and now every timeout mints
+a new independently valid transaction. The discipline: resubmit the same signed payload until it
+expires; treat expiry as a *suspicion*, not a verdict — the transaction may still land — and only
+authorize a new attempt once the watcher confirms the old one is dead.
+
+**Should we broadcast to multiple nodes simultaneously?**
+Yes — submission is idempotent, so broadcasting one payload to two or three independent endpoints
+buys propagation insurance for free. Log which nodes accepted. What you must never do is build or
+sign per node; the payload is one, the signatures are one, the fan-out is pure transport.
+
+**What happens when the signer is down?**
+Withdrawals queue at the signing boundary with full visibility — metrics, alerts, and an honest
+"signing degraded" status on the operations dashboard. The signed-payload store means nothing in
+flight is lost. What never happens: a fallback to application-held keys. The boundary is the
+boundary precisely because it has no emergency exit.
+
+**Where do fees fit into all this?**
+Fees are decided in the build stage — the `maxFeePerGas`/tip on EVM, the priority-fee instruction
+on Solana, the sat/vB rate on UTXO — and they're the deep dive of Post 06: estimation under
+congestion, EIP-1559 mechanics, Tron's energy economics, and why fee strategy is the reason
+nonces exist as a management problem at all. This post treats the fee estimator as a dependency;
+Post 06 opens it.
+
+---
+
+## Further Reading
+
+- [**Ethereum Execution API specification**](https://ethereum.github.io/execution-apis/) — `eth_sendRawTransaction`, transaction envelopes, and the EIP-1559 fields your EVM builder lives on.
+- [**EIP-1559: Fee market change**](https://eips.ethereum.org/EIPS/eip-1559) — `maxFeePerGas` vs `maxPriorityFeePerGas`, and why "gas price" became two numbers.
+- [**Solana docs: Anatomy of a Transaction**](https://solana.com/docs) — blockhash validity, instructions, account metas, and the 1,232-byte size ceiling.
+- [**Solana docs: Durable Nonces**](https://solana.com/docs) — decoupling transaction validity from the blockhash clock for offline signing flows.
+- [**Bitcoin Developer Guide: Transactions**](https://developer.bitcoin.org/devguide/transactions.html) — input selection, change, SIGHASH flags, and dust thresholds.
+- [**BIP-125: Opt-in Full Replace-by-Fee**](https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki) — the sequence-number mechanics that let a stuck UTXO transaction be replaced (preview of Post 07).
+- [**Tron developer documentation**](https://developers.tron.network/) — bandwidth/energy, TRC-20 contract calls, and the `visible` address-encoding trap.
+- [**XRPL docs: Transaction Basics**](https://xrpl.org/docs.html) — sequence numbers, LastLedgerSequence, destination tags, and fee-in-drops.
+- [**Post 04 of this series: Block Scanning & Transaction Detection**](https://puneethkumarck.github.io/blog/block-scanning-transaction-detection/) — the confirmation thresholds and watcher machinery the Sender hands off to.
+- [**Post 03 of this series: One Pattern, Many Chains**](https://puneethkumarck.github.io/blog/multi-chain-watcher-sender-pattern/) — the Watcher/Sender split and the one-signing-contract promise this post cashes in.
