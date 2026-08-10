@@ -2,6 +2,7 @@
 title: "Key Management & Signing: Keys Never Leave the Enclave"
 description: "Custody is not a feature you bolt on — it is the property that makes every other feature trustworthy. The design in this post holds private keys in exactly one form outside a hardware-isolated enclave: ciphertext. Keys are generated inside the enclave, stored encrypted under a cloud KMS root key, and exist in plaintext only for the duration of one attested sign call. The spine is a threat model: every design decision answers one question — how would keys be stolen here, and why does this stop it?"
 date: 2026-08-07
+updated: 2026-08-10
 category: stablecoin-payments
 tags:
   - Stablecoins
@@ -127,6 +128,17 @@ cloud KMS with a TEE, but the architecture ports to any cloud and any enclave te
 
 The whole design is one picture — three zones of decreasing trust, with the key's plaintext
 existence restricted to the innermost one:
+
+![Key custody enclave: nested trust boundaries — App contains Vault contains Enclave holding the key; KMS attests, signing requests flow in, only signatures flow out, every other path denied. "Signatures leave. Keys never do."](/images/blog/enclave-custody-whiteboard.jpeg)
+
+*Signatures leave. Keys never do.* The sketch captures the entire architecture: the private key
+sits at the center of nested boundaries (App → Vault → Enclave), the cloud KMS attests to the
+enclave before it will interact with it, signing requests are the only thing allowed *in*, and
+signatures are the only thing allowed *out*. Every other path — human access, app-layer access,
+key extraction in any direction — is explicitly denied. The rest of this post is a zoom into one
+corner of this picture at a time.
+
+The same model, rendered as a data-flow diagram:
 
 ```mermaid
 flowchart LR
