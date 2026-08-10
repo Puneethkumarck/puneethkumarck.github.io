@@ -2,7 +2,7 @@
 title: "Fees, Gas & Nonce Management"
 description: "Every outbound transaction answers two questions the chain asks: what does inclusion cost right now, and in what order? Fees answer the first, nonces the second — and every chain family implements both with different physics. EVM burns a protocol base fee and auctions priority; UTXO prices by weight so your fee depends on the coins you spend; Tron prices bandwidth and energy; Ripple prices anti-spam fees by network load. The engineering answer is one estimation pipeline behind one contract shape — plus the nonce discipline and prefunding that keep money from sitting."
 date: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-10
 category: stablecoin-payments
 tags:
   - Stablecoins
@@ -156,6 +156,70 @@ The contract is deliberately dumb — an amount and an asset. All chain physics 
 estimator; the builder and everything downstream see one shape. That boundary is what lets a
 platform add a chain without touching the withdrawal orchestration: the Chain-N+1 test from
 Post 02 applies to fees exactly as it applies to detection.
+
+The rest of the post, in one glance — everything hangs off the two questions:
+
+```mermaid
+mindmap
+  root((Fees, Gas<br/>and Nonces))
+    Price of blockspace
+      EVM
+        Base fee burned
+        1.125 growth bound
+        Priority tip by urgency
+        Gas limit per asset
+        Percentile buckets
+      UTXO
+        Rate times vsize
+        Inputs drive size
+        Change and dust loop
+        Min relay and min increment
+      Tron
+        Bandwidth plus energy
+        Recipient-dependent cost
+      Ripple
+        Base times load factor
+        Fail fast on missing data
+      Wider field
+        Solana blockhash window
+        Cosmos validator floors
+        Cardano exact formula
+        Stellar surge and fee bump
+        Algorand flat fee
+        Move storage rebate
+    Lock of sequence
+      Three bookmarks
+        Assigned at build
+        Reserved watermark
+        Submitted high-water
+        Submission gate
+      Failure taxonomy
+        Gaps
+        Collisions
+        Stale reads
+      Hash-lifetime chains
+        Solana and Algorand windows
+      Prefunding
+        Gas as precondition
+        Provider hierarchy
+        Callback ordering
+    Estimation pipeline
+      Node RPC
+      Strategy and confirmation target
+      Ceiling clamp
+      One contract shape
+      Fail fast
+    What breaks
+      Stale estimates
+      Ceilings misread as bids
+      Nonce lockups
+      Prefund races
+    Measurement
+      Estimate versus actual delta
+      Latency by fee bucket
+      Estimation error rate
+      Stuck transaction rate
+```
 
 ---
 
@@ -373,16 +437,36 @@ alive somewhere in the orchestrator, and someone has to unwind it.
 a read replica, and the builder sees N−1 while the chain expects N. The transaction fails or
 queues for reasons no log line explains.
 
-The design answers, in order of importance:
+The design answers, in order of importance. The strongest version of them tracks **three nonce
+bookmarks** instead of one — a pattern worth copying wholesale:
 
-1. **One writer per address.** Nonce assignment is serialized — a single component reads
-   `max(chainNonce, localTracked)` and hands out nonces under a lock (or a single-threaded
-   queue). Concurrent builders don't share an address; addresses that need throughput get
-   sharded across pools (which is one reason the wallet layer in these platforms is
-   hierarchical).
+- **Assigned** — the nonce handed to a specific transaction at build time.
+- **Reserved** — a per-address watermark: the highest nonce any in-flight request has claimed.
+  The reserved nonce is, in effect, the platform's statement of everything it *intends* to send
+  from that address.
+- **Submitted** — a per-address high-water mark: the highest nonce actually broadcast to the
+  network so far.
+
+With all three bookmarks, every gap gets a forensic signature *before* it becomes a chain
+symptom. An **out-of-order submission** — the assigned nonce is not exactly `submitted + 1` —
+means the platform is about to broadcast ahead of itself; the correct behavior is to hold and
+await the correctly sequenced transaction rather than push the queue further into disorder. A
+**blocked-by-failed-predecessor** check — an assigned nonce beyond the reserved watermark —
+means an earlier request died and took the sequence with it, so the gap is explained and
+recoverable instead of mysterious. And the submission queue itself releases signed transactions
+in strict nonce order, never in build order: signing and submitting are two queues, and only
+the second one is allowed to reorder nothing.
+
+From the bookmarks, the operational rules follow:
+
+1. **One writer per address.** Nonce assignment is serialized — a single component hands out
+   nonces under a lock (or a single-threaded queue). Concurrent builders don't share an
+   address; addresses that need throughput get sharded across pools (which is one reason the
+   wallet layer in these platforms is hierarchical).
 2. **Reservations hold the nonce.** The funds reservation created at build time stays locked
-   until the transaction with that nonce confirms or is explicitly replaced. A gap is thus
-   always *explainable*: some reservation holds the missing nonce.
+   until the transaction with that nonce confirms or is explicitly replaced, and the reserved
+   watermark only advances when a request commits to a nonce. A gap is thus always
+   *explainable*: some reservation holds the missing nonce.
 3. **Detection over hope.** A transaction waiting longer than its confirmation target with no
    block inclusion is a *suspected gap or underprice* — surfaced to the stuck-transaction
    machinery (Post 07), not retried blindly. Retrying a nonce problem by building fresh makes
