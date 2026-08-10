@@ -2,6 +2,7 @@
 title: "Fees, Gas & Nonce Management"
 description: "Every outbound transaction answers two questions the chain asks: what does inclusion cost right now, and in what order? Fees answer the first, nonces the second — and every chain family implements both with different physics. EVM burns a protocol base fee and auctions priority; UTXO prices by weight so your fee depends on the coins you spend; Tron prices bandwidth and energy; Ripple prices anti-spam fees by network load. The engineering answer is one estimation pipeline behind one contract shape — plus the nonce discipline and prefunding that keep money from sitting."
 date: 2026-08-07
+updated: 2026-08-07
 category: stablecoin-payments
 tags:
   - Stablecoins
@@ -80,10 +81,13 @@ account-model chains it also covers the sequencing dimension — nonces — beca
 a wrong nonce produce the same symptom: money that doesn't move.
 
 **Q: Which chains?**
-A: The four physics this series covers: EVM chains (Ethereum, its L2s, and every EVM-equivalent
-network — same gas model everywhere), UTXO chains (Bitcoin and its family), Tron, and Ripple.
-Solana rides the account-model nonce discipline with its own priority-fee mechanics; the
-estimation-pipeline shape applies unchanged.
+A: The fee physics this series covers, across ten chain families: EVM chains (Ethereum, its
+L2s, and every EVM-equivalent network — same gas model everywhere), UTXO chains (Bitcoin and
+its family), Tron, Ripple, Solana, Cosmos SDK chains, Cardano, Stellar, Algorand, and the Move
+chains (Aptos, Sui). Four of them — EVM, UTXO, Tron, Ripple — get full treatment because
+that's where the engineering depth lives; the wider field gets one tight subsection each,
+because their mechanics are simpler or their fee logic is a variant of something already
+covered. The estimation-pipeline shape applies to all of them unchanged.
 
 **Q: What are the non-negotiables?**
 A: Five.
@@ -125,6 +129,12 @@ Every chain family implements both, under different names and different physics:
 | UTXO | fee rate × virtual size | the input set itself (each coin spends once) |
 | Tron | bandwidth + energy (resources or burn) | transaction reference/expiration |
 | Ripple | base fee × load factor | account sequence number |
+| Solana | flat base fee + priority-fee bid | recent blockhash validity window |
+| Cosmos SDK | gas units × gas price (validator min-gas-prices) | account sequence number |
+| Cardano | deterministic `a × txSize + b` — no bidding | input set (UTXO) |
+| Stellar | base fee per op, surge-priced auction when full | account sequence number + fee bump |
+| Algorand | flat minimum fee — no auction | transaction id / first-valid window |
+| Move (Aptos, Sui) | gas unit price × units + storage fee | sequence number (+ object versions on Sui) |
 
 And every one of them collapses into the same platform contract once estimated:
 
@@ -259,6 +269,66 @@ guard: if the node returns no base fee or no load factor, the estimator throws. 
 fallback constant. This is the fail-fast non-negotiable in its purest form: an estimator that
 can't see the market must say so, because any number it invents is a lie with money attached.
 
+### The Wider Field: Six More Families, Same Two Questions
+
+The four physics above earn their depth. The rest of the field answers the same two questions
+with less machinery — which is itself the lesson. Each family below: price of blockspace, then
+lock of sequence.
+
+**Solana — flat base, bid for priority, blockhash as clock.** The price of inclusion is a small
+flat base fee per signature plus an optional **priority fee** bid (in micro-lamports per
+compute unit) — under load, the bid decides whether your transaction makes the leader's
+schedule. The sequence lock is the surprising part: Solana transactions don't carry a nonce
+counter; they embed a **recent blockhash** and are only valid for roughly two minutes of slots.
+A transaction that doesn't land before its blockhash expires simply *stops being a
+transaction* — Solana's version of the stale-estimate failure, with expiry built into validity.
+For accounts that need offline or long-lived sequencing, durable nonces exist as an opt-in
+substitute. Estimation here means pricing the priority bid, and monitoring means watching for
+expired-blockhash failures masquerading as "dropped" sends.
+
+**Cosmos SDK — gas price is a validator floor, not a market.** The price is gas units times a
+gas price in a fee denomination (often the staking token; some zones accept several). There is
+no global fee auction: each validator publishes a **minimum gas price**, so estimation reduces
+to choosing a price above the validators you expect to include you — usually a configured
+constant plus a safety margin. Sequence numbers per account behave exactly like EVM nonces:
+contiguous, gap-blocked, one-writer-required. If you built the EVM nonce discipline, you
+already built the Cosmos one.
+
+**Cardano — the fee is a formula, not a market.** Inclusion costs `a × txSize + b`, where `a`
+and `b` are protocol parameters: the fee is **computable exactly before signing**, with no
+bidding in the base layer. It's UTXO like Bitcoin — inputs drive size — but where Bitcoin
+prices by market rate, Cardano prices by protocol constant. For a platform this is the
+degenerate case of the estimation pipeline: the right "estimate" is an exact computation, and
+the pipeline's first job is knowing *when not to estimate*.
+
+**Stellar — a real auction hiding behind a base fee.** Each operation costs a base fee, and
+when a ledger is full, inclusion becomes **surge pricing**: a genuine auction where the
+highest fee bids win the ledger's slots. So Stellar estimation is load-dependent like
+Ripple's, but the mechanism is a market rather than a multiplier. Sequencing uses account
+sequence numbers, with one tool EVM lacks: a **fee bump** transaction that raises the fee of a
+transaction already in flight — recovery without replacement, worth knowing when you design
+Post 07's recovery machinery.
+
+**Algorand — the simplest fee model in the field.** A flat minimum fee per transaction, no
+auction at the base layer. Estimation is a constant; the only real fee engineering appears in
+application calls, where fees can attach to inner transactions. Sequencing uses validity
+windows (first-valid/last-valid rounds) rather than counters — another hash-lifetime family
+member alongside Solana, with the same expired-window failure mode.
+
+**Move (Aptos, Sui) — gas units plus a storage economy.** The price is gas unit price times
+units used, plus a **storage fee** component — and on Sui, a storage *rebate*: you pay for the
+state your objects occupy and get refunded when they're deleted, which makes long-lived state
+a real cost line for consolidation-heavy platforms. Sequencing is per-account sequence
+numbers; Sui adds object versions as a second dimension, which is what lets it execute
+non-conflicting transactions in parallel. For fee engineering, the takeaway: watch the storage
+component on workloads that create and delete many objects — sweeps, precisely.
+
+Two patterns unify all six: **hash-lifetime chains** (Solana, Algorand) replace counter-based
+sequencing with validity windows, so "the transaction expired" is a first-class failure to
+detect; and **deterministic-fee chains** (Cardano, Algorand base layer) collapse estimation
+into computation. Your pipeline needs to know which family it's talking to — that's the whole
+job of the per-chain configuration the contract hides.
+
 ---
 
 ## Nonce Management: The Ordering Dimension
@@ -348,6 +418,17 @@ Two details make it correct: the callback ordering (the token transfer's nonce m
 *after* the prefund lands, or it races), and the relationship record (auditors can see why the
 small native transfer exists — it's not treasury leakage, it's the fee precondition for the
 transfer it's linked to).
+
+And the question every reader asks next — *where does the prefund come from?* — has a real
+production answer, not "a treasury wallet." Mature platforms select the funding source through
+a small provider hierarchy: a **master** prefunding address as the default source, candidates
+like *the smallest address with zero contract balance* when consolidating token dust (funding
+the consolidation from within the set being swept), **composite** providers that chain several
+strategies with conditional enablement, and a completion **callback** that releases the
+dependent transfer only when the prefund confirms. The prefund is itself a managed mini-flow —
+source selection, amount sizing, confirmation wait — because it is one. Treat it as plumbing
+and your consolidations stall on empty gas addresses; treat it as a workflow and stranded
+tokens stop being a support category.
 
 ---
 
@@ -473,8 +554,10 @@ Fee management metrics are the estimator's report card:
 - [ ] UTXO: fee computed from selected inputs' vsize; change dropped below dust threshold
 - [ ] Tron: energy units differ for existing vs fresh recipients — estimator checks both
 - [ ] Ripple: base fee × load factor from server info; missing values throw
+- [ ] Hash-lifetime chains (Solana, Algorand): expired-validity-window is a detected failure, not a silent drop
+- [ ] Deterministic-fee chains (Cardano, Algorand base): fee computed exactly — the pipeline knows when NOT to estimate
 - [ ] One writer assigns nonces per address; reservations hold nonces until confirm/replace
-- [ ] Token transfers preceded by a linked, callback-ordered native prefund
+- [ ] Token transfers preceded by a linked, callback-ordered native prefund (source picked by provider hierarchy)
 - [ ] Estimate-vs-actual delta tracked per chain — the estimator's report card
 
 ---
