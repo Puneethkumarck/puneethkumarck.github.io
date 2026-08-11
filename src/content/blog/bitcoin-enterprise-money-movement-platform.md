@@ -14,8 +14,6 @@ series: "Stablecoin Payment Infra"
 draft: false
 ---
 
-## A visual explanation of the Crypto Platform’s chain adapter, custody boundary, KYT controls, and ledger settlement
-
 Bitcoin integration is not a “send transaction” feature. In an enterprise platform, it is a controlled pipeline that joins five different realities:
 
 1. a customer instruction;
